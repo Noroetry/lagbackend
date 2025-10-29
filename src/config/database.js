@@ -1,9 +1,29 @@
 const { Sequelize, DataTypes } = require('sequelize');
 const fs = require('fs');
 const path = require('path');
-require('dotenv').config();
 
-const sequelize = new Sequelize(
+// Cargar variables de entorno desde .env SOLO en desarrollo/local
+if (process.env.NODE_ENV !== 'production') {
+  try {
+    require('dotenv').config();
+    console.log('[Database] dotenv cargado para entorno de desarrollo');
+  } catch (err) {
+    console.warn('[Database] dotenv no está instalado o no pudo cargarse:', err.message);
+  }
+}
+
+const sequelize = new Sequelize(process.env.DATABASE_URL, {
+    dialect: 'postgres',
+    // Neon ya requiere SSL, pero a veces necesitas configuraciones adicionales
+    dialectOptions: {
+        ssl: {
+            require: true, 
+            rejectUnauthorized: false // Usar si da problemas con certificados
+        }
+    }
+});
+
+const sequelizeLocal = new Sequelize(
     process.env.DB_NAME,
     process.env.DB_USER,
     process.env.DB_PASSWORD,

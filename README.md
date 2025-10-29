@@ -116,3 +116,58 @@ Si las credenciales son rechazadas:
 ## Contacto
 
 Si encuentras algún problema o tienes preguntas, por favor crea un issue en el repositorio.
+
+## Despliegue en Render
+
+Esta sección explica cómo desplegar este proyecto en Render usando un repositorio en GitHub.
+
+1. Crea un repositorio en GitHub y sube tu código (ver sección "Crear remoto GitHub" abajo).
+2. Entra a https://render.com y crea una cuenta si no tienes.
+3. Haz clic en "New" -> "Web Service" -> conecta tu cuenta de GitHub y selecciona el repositorio.
+4. En "Build Command" deja vacío (por defecto Render ejecuta `npm install`). En "Start Command" deja `npm start` (o `node server.js`).
+5. Configura las Environment Variables en Render (Settings > Environment). Agrega al menos:
+    - `DATABASE_URL` (o `DB_*` variables si prefieres)
+    - `JWT_SECRET`
+    - `NODE_ENV=production`
+    - cualquier otra variable que use tu `src/config/config.js`
+6. Si usas una base de datos externa (Neon, Heroku Postgres, etc.), pega la `DATABASE_URL` que te provea el servicio.
+7. Desactiva el uso de `.env` en producción: Render leerá las variables desde su configuración. No subas tu `.env` al repo.
+
+Notas específicas para este repo:
+- `package.json` ya tiene `start: node server.js`, y `server.js` usa `process.env.PORT`, por lo que Render podrá arrancar la app con `npm start`.
+- `src/config/database.js` usa `process.env.DATABASE_URL` y `require('dotenv').config()` para desarrollo local. En Render no es necesario `dotenv` si configuras las vars en el panel de Render.
+
+## Crear remoto GitHub (escritorio remoto)
+
+Si actualmente usas Git localmente y quieres crear un remoto en GitHub, sigue estos pasos desde PowerShell en Windows.
+
+1) Crea el repositorio en GitHub desde la web. Copia la URL del repo (p. ej. `https://github.com/tuusuario/lagbackend.git`).
+
+2) Añade el remoto y haz push:
+
+```powershell
+git remote add origin https://github.com/tuusuario/lagbackend.git
+git branch -M main
+git push -u origin main
+```
+
+Si tu repositorio local ya tiene commits y utilizas `master` en lugar de `main`, ajusta el nombre de la rama.
+
+3) Si tu cuenta requiere autenticación con token (GitHub ya no acepta contraseñas), crea un Personal Access Token (PAT) en GitHub (Settings > Developer settings > Personal access tokens) con permisos `repo` y usa ese token como contraseña cuando Git te lo pida.
+
+4) Opcional: configura SSH para evitar introducir el token cada vez. Sigue las instrucciones de GitHub para generar claves SSH y añadirlas a tu cuenta.
+
+## Resumen de verificación rápida antes de desplegar
+
+- `server.js` usa `process.env.PORT` ✅
+- `package.json` tiene `start` script ✅
+- `.gitignore` contiene `.env` y `node_modules` ✅
+- Asegúrate de configurar las vars en Render (no dependas de `.env` en producción) ✅
+
+Si quieres, puedo:
+
+- Añadir un `Procfile` (opcional) con `web: npm start`.
+- Mover `dotenv` a `dependencies` si prefieres que esté disponible en producción (no recomendado para secretos).
+- Automáticamente crear un repo en GitHub vía API (necesitaré un token tuyo o tú puedes ejecutar los comandos que te doy).
+
+Dime qué prefieres y lo hago en el siguiente paso.
