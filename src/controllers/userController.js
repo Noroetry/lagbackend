@@ -68,7 +68,8 @@ async function getMe(req, res) {
             admin: userObj.admin
         };
 
-        console.log(`[UserController] Devolviendo perfil para usuario ID: ${userId}`);
+        const logUserId = req.user ? req.user.id : req.userId;
+        console.log(`[UserController] Devolviendo perfil para usuario ID: ${logUserId}`);
         return res.status(200).json(response);
     } catch (error) {
         console.error('[UserController] Error en getMe:', error.message || error);
