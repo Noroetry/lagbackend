@@ -17,8 +17,15 @@ const protect = (req, res, next) => {
             const decoded = jwt.verify(token, JWT_SECRET);
             console.log(`[AuthMiddleware] Token válido para usuario ID: ${decoded.id}`);
 
-            req.userId = decoded.id; 
-            
+            // Adjuntamos el usuario decodificado para que los controladores tengan acceso
+            req.userId = decoded.id;
+            req.user = {
+                id: decoded.id,
+                username: decoded.username,
+                email: decoded.email,
+                admin: decoded.admin
+            };
+
             console.log('[AuthMiddleware] Autorización exitosa, continuando con la petición');
             next();
         } catch (error) {
