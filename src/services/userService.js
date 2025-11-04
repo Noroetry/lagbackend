@@ -58,6 +58,13 @@ async function createUser(userData) {
         logger.warn('[UserService] Error: Datos de usuario incompletos');
         throw new Error("Nombre de usuario, email y contraseña son obligatorios.");
     }
+    // Bloquear nombres de usuario que contengan palabras reservadas
+    const reserved = ['admin', 'root', 'system'];
+    const usernameLower = (userData.username || '').toString().toLowerCase();
+    if (reserved.some(r => usernameLower.includes(r))) {
+        logger.warn('[UserService] Intento de crear usuario con palabra reservada en el username:', userData.username);
+        throw new Error('El nombre de usuario contiene palabras reservadas y no está permitido.');
+    }
     
     try {
     logger.debug('[UserService] Creando nuevo usuario en la base de datos...');
@@ -74,10 +81,11 @@ async function createUser(userData) {
         // Si la tabla Message existe, añadimos el welcome message y lo adjuntamos a la respuesta.
         try {
             if (Message) {
+                // El emisor del mensaje de bienvenida es siempre 'system' (firma del servidor)
                 const welcome = await Message.create({
                     title: 'Bienvenido a LifeAsGame',
                     description: `¡Hola ${userWithoutPassword.username}! Bienvenido a LifeAsGame. Gracias por unirte. Explora el juego y diviértete.`,
-                    source: process.env.SYSTEM_USERNAME || 'system',
+                    source: 'system',
                     destination: userWithoutPassword.username,
                     adjunts: null,
                     read: 'N',
