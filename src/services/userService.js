@@ -1,50 +1,98 @@
-const { User } = require('../config/database');
+const db = require('../config/database');
 const { Op } = require('sequelize');
+const User = db.User;
+const Message = db.Message;
 
 async function login(usernameOrEmail, password) {
-    console.log(`[UserService] Intento de login para usuario/email: ${usernameOrEmail}`);
+    const logger = require('../utils/logger');
+    logger.debug(`[UserService] Intento de login para usuario/email: ${usernameOrEmail}`);
     
     const user = await User.findOne({ where: { [Op.or]: [{ username: usernameOrEmail }, { email: usernameOrEmail }] } });
 
     if (!user) {
-        console.log(`[UserService] Login fallido: Usuario no encontrado para ${usernameOrEmail}`);
+        logger.warn(`[UserService] Login fallido: Usuario no encontrado para ${usernameOrEmail}`);
         throw new Error('Credenciales inválidas.');
     }
 
-    console.log(`[UserService] Usuario encontrado, verificando contraseña para ${usernameOrEmail}`);
+    logger.debug(`[UserService] Usuario encontrado, verificando contraseña para ${usernameOrEmail}`);
     const isMatch = await user.comparePassword(password); 
 
     if (!isMatch) {
-        console.log(`[UserService] Login fallido: Contraseña incorrecta para ${usernameOrEmail}`);
+        logger.warn(`[UserService] Login fallido: Contraseña incorrecta para ${usernameOrEmail}`);
         throw new Error('Credenciales inválidas.');
     }
     
-    console.log(`[UserService] Login exitoso para usuario: ${user.username}`);
+    logger.debug(`[UserService] Login exitoso para usuario: ${user.username}`);
     const userWithoutPassword = user.toJSON();
     delete userWithoutPassword.password;
-    
+
+    // Cargar mensajes relacionados (source o destination igual al username)
+    try {
+        if (Message) {
+            const messages = await Message.findAll({
+                where: {
+                    [Op.or]: [
+                        { source: user.username },
+                        { destination: user.username }
+                    ]
+                },
+                order: [['dateSent', 'DESC']]
+            });
+            userWithoutPassword.messages = messages.map(m => (m.toJSON ? m.toJSON() : m));
+        } else {
+            userWithoutPassword.messages = [];
+        }
+    } catch (err) {
+        logger.error('[UserService] Error cargando mensajes para usuario:', err.message || err);
+        userWithoutPassword.messages = [];
+    }
+
     return userWithoutPassword;
 }
 
 async function createUser(userData) {
-    console.log(`[UserService] Intento de crear nuevo usuario con username: ${userData.username}, email: ${userData.email}`);
+    const logger = require('../utils/logger');
+    logger.info(`[UserService] Intento de crear nuevo usuario con username: ${userData.username}, email: ${userData.email}`);
     
     if (!userData.email || !userData.username || !userData.password) {
-         console.log('[UserService] Error: Datos de usuario incompletos');
-         throw new Error("Nombre de usuario, email y contraseña son obligatorios.");
+        logger.warn('[UserService] Error: Datos de usuario incompletos');
+        throw new Error("Nombre de usuario, email y contraseña son obligatorios.");
     }
     
     try {
-        console.log('[UserService] Creando nuevo usuario en la base de datos...');
-        const newUser = await User.create(userData);
-        
-        console.log(`[UserService] Usuario creado exitosamente con ID: ${newUser.id}`);
+    logger.debug('[UserService] Creando nuevo usuario en la base de datos...');
+    const newUser = await User.create(userData);
+
+    logger.info(`[UserService] Usuario creado exitosamente con ID: ${newUser.id}`);
         const userWithoutPassword = newUser.toJSON();
         delete userWithoutPassword.password;
-        
+
+    // nuevos usuarios empiezan sin mensajes
+    userWithoutPassword.messages = [];
+
+        // Crear un mensaje de bienvenida desde el usuario `system` hacia el nuevo usuario.
+        // Si la tabla Message existe, añadimos el welcome message y lo adjuntamos a la respuesta.
+        try {
+            if (Message) {
+                const welcome = await Message.create({
+                    title: 'Bienvenido a LifeAsGame',
+                    description: `¡Hola ${userWithoutPassword.username}! Bienvenido a LifeAsGame. Gracias por unirte. Explora el juego y diviértete.`,
+                    source: process.env.SYSTEM_USERNAME || 'system',
+                    destination: userWithoutPassword.username,
+                    adjunts: null,
+                    read: 'N',
+                    state: 'A'
+                });
+                userWithoutPassword.messages.push(welcome.toJSON ? welcome.toJSON() : welcome);
+                logger.debug('[UserService] Mensaje de bienvenida creado para', userWithoutPassword.username);
+            }
+        } catch (err) {
+            logger.warn('[UserService] No se pudo crear mensaje de bienvenida:', err && err.message);
+        }
+
         return userWithoutPassword;
     } catch (error) {
-        console.log("[UserService] Error al crear usuario:", error);
+        logger.error("[UserService] Error al crear usuario:", error);
         if (error.name === 'SequelizeUniqueConstraintError') {
             console.log(`[UserService] Error de duplicación: ${userData.username} o ${userData.email} ya existe`);
             throw new Error(`El usuario/email ya está registrado. Por favor, utiliza otro.`);

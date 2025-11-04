@@ -1,21 +1,19 @@
 const jwt = require('jsonwebtoken');
+const logger = require('../utils/logger');
 
-const JWT_SECRET = process.env.JWT_SECRET; 
+const JWT_SECRET = process.env.JWT_SECRET;
 
 const protect = (req, res, next) => {
-    console.log('[AuthMiddleware] Verificando autorización para ruta:', req.originalUrl);
+    logger.debug('[AuthMiddleware] Verificando autorización para ruta:', req.originalUrl);
     let token;
 
-    if (
-        req.headers.authorization &&
-        req.headers.authorization.startsWith('Bearer')
-    ) {
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
         try {
-            console.log('[AuthMiddleware] Token Bearer encontrado, verificando...');
+            logger.debug('[AuthMiddleware] Token Bearer encontrado, verificando...');
             token = req.headers.authorization.split(' ')[1];
 
             const decoded = jwt.verify(token, JWT_SECRET);
-            console.log(`[AuthMiddleware] Token válido para usuario ID: ${decoded.id}`);
+            logger.debug('[AuthMiddleware] Token verificado para usuario ID:', decoded.id);
 
             // Adjuntamos el usuario decodificado para que los controladores tengan acceso
             req.userId = decoded.id;
@@ -26,21 +24,16 @@ const protect = (req, res, next) => {
                 admin: decoded.admin
             };
 
-            console.log('[AuthMiddleware] Autorización exitosa, continuando con la petición');
-            next();
+            logger.debug('[AuthMiddleware] Autorización exitosa, continuando con la petición');
+            return next();
         } catch (error) {
-            console.error('[AuthMiddleware] Error de verificación de token:', {
-                error: error.message,
-                token: token ? token.substring(0, 10) + '...' : 'null'
-            });
+            logger.warn('[AuthMiddleware] Error de verificación de token:', error.message);
             return res.status(401).json({ message: 'No autorizado, token fallido o expirado' });
         }
     }
 
-    if (!token) {
-        console.log('[AuthMiddleware] No se encontró token en la petición');
-        return res.status(401).json({ message: 'No autorizado, no hay token' });
-    }
+    logger.debug('[AuthMiddleware] No se encontró token en la petición');
+    return res.status(401).json({ message: 'No autorizado, no hay token' });
 };
 
 module.exports = { protect };
