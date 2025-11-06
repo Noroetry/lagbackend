@@ -127,9 +127,44 @@ async function getUserById(userId) {
     return user;
 }
 
+// Devuelve el perfil completo para el cliente: objeto plano (sin password) y con mensajes relacionados
+async function getProfileById(userId) {
+    const logger = require('../utils/logger');
+    const user = await User.findByPk(userId, {
+        attributes: { exclude: ['password'] }
+    });
+    if (!user) {
+        throw new Error(`Usuario con ID ${userId} no encontrado.`);
+    }
+    const userObj = user.toJSON ? user.toJSON() : user;
+    // Cargar mensajes relacionados (source o destination igual al username)
+    try {
+        if (Message) {
+            const messages = await Message.findAll({
+                where: {
+                    [Op.or]: [
+                        { source: userObj.username },
+                        { destination: userObj.username }
+                    ]
+                },
+                order: [['dateSent', 'DESC']]
+            });
+            userObj.messages = messages.map(m => (m.toJSON ? m.toJSON() : m));
+        } else {
+            userObj.messages = [];
+        }
+    } catch (err) {
+        logger.error('[UserService] Error cargando mensajes para perfil:', err.message || err);
+        userObj.messages = [];
+    }
+
+    return userObj;
+}
+
 module.exports = {
     login,
     createUser,
     getAllUsers,
     getUserById,
+    getProfileById,
 };

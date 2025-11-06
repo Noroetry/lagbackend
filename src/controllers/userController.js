@@ -25,27 +25,6 @@ async function login(req, res) {
     }
 }
 
-async function getAllUsers(req, res) {
-    try {
-        const users = await userService.getAllUsers();
-        return res.status(200).json(users);
-    } catch (error) {
-        logger.error("Error al obtener usuarios:", error);
-        return res.status(500).json({ error: 'Fallo al recuperar los datos de usuario.' });
-    }
-}
-
-async function getUserById(req, res) {
-    const userId = req.params.id;
-    try {
-        const user = await userService.getUserById(userId);
-        return res.status(200).json(user);
-    } catch (error) {
-        logger.error("Error al obtener el usuario:", error);
-        return res.status(500).json({ error: 'Fallo al recuperar los datos del usuario.' });
-    }
-}
-
 async function getMe(req, res) {
     try {
     logger.info('[UserController] Petición GET /me recibida');
@@ -55,20 +34,12 @@ async function getMe(req, res) {
             return res.status(401).json({ error: 'No autorizado' });
         }
 
-        let userObj;
-        if (req.user) {
-            userObj = req.user;
-        } else {
-            const userId = req.userId;
-            const user = await userService.getUserById(userId);
-            userObj = user.toJSON ? user.toJSON() : user;
-        }
-        const response = {
-            _id: (userObj.id || userObj._id) ? String(userObj.id || userObj._id) : undefined,
-            username: userObj.username,
-            email: userObj.email,
-            admin: userObj.admin
-        };
+        // Para asegurar consistencia devolvemos siempre el perfil completo
+        // obtenido desde la base de datos (mismo formato que login/createUser)
+        const userId = req.userId || (req.user && req.user.id);
+        const userObj = await userService.getProfileById(userId);
+        userObj._id = String(userObj.id || userObj._id);
+        const response = userObj;
 
     const logUserId = req.user ? req.user.id : req.userId;
     logger.debug(`[UserController] Devolviendo perfil para usuario ID: ${logUserId}`);
@@ -116,8 +87,6 @@ async function createUser(req, res) {
 
 module.exports = {
     login,
-    getAllUsers,
-    getUserById,
     createUser,
     getMe,
 };
