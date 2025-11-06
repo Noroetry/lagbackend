@@ -3,6 +3,50 @@ const { Op } = require('sequelize');
 const User = db.User;
 const Message = db.Message;
 
+const jwt = require('jsonwebtoken');
+
+function generateAccessToken(payload) {
+    return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1h' });
+}
+
+function generateRefreshToken(payload) {
+    // longer lived refresh token
+    return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN || '7d' });
+}
+
+// Rotate refresh token: verify provided refresh token, ensure it matches stored one,
+// then generate a new pair and persist the new refresh token.
+async function refreshTokens(providedRefreshToken) {
+    const logger = require('../utils/logger');
+    try {
+        const decoded = jwt.verify(providedRefreshToken, process.env.JWT_SECRET);
+        const user = await User.findByPk(decoded.id);
+        if (!user) throw new Error('Usuario no encontrado');
+        // Single active refresh token policy: compare stored value
+        if (!user.refreshToken || user.refreshToken !== providedRefreshToken) {
+            logger.warn('[UserService] Refresh token no coincide con el almacenado');
+            throw new Error('Refresh token inválido');
+        }
+        const payload = { id: user.id, username: user.username, email: user.email, admin: user.admin };
+        const newAccessToken = generateAccessToken(payload);
+        const newRefreshToken = generateRefreshToken(payload);
+        await user.update({ refreshToken: newRefreshToken });
+        const userObj = user.toJSON ? user.toJSON() : user;
+        delete userObj.password;
+        return { user: userObj, accessToken: newAccessToken, refreshToken: newRefreshToken };
+    } catch (err) {
+        logger.warn('[UserService] Error en refreshTokens:', err && err.message ? err.message : err);
+        throw err;
+    }
+}
+
+async function revokeRefreshTokenForUser(userId) {
+    const user = await User.findByPk(userId);
+    if (!user) throw new Error('Usuario no encontrado');
+    await user.update({ refreshToken: null });
+    return true;
+}
+
 async function login(usernameOrEmail, password) {
     const logger = require('../utils/logger');
     logger.debug(`[UserService] Intento de login para usuario/email: ${usernameOrEmail}`);
@@ -47,7 +91,19 @@ async function login(usernameOrEmail, password) {
         userWithoutPassword.messages = [];
     }
 
-    return userWithoutPassword;
+    // generate token pair and persist refresh token on user record
+    try {
+        const payload = { id: user.id, username: user.username, email: user.email, admin: user.admin };
+        const accessToken = generateAccessToken(payload);
+        const refreshToken = generateRefreshToken(payload);
+        // store refresh token server-side to allow rotation/revocation
+        await user.update({ refreshToken });
+        userWithoutPassword._refreshToken = refreshToken; // internal for controllers if needed
+        return { user: userWithoutPassword, accessToken, refreshToken };
+    } catch (err) {
+        logger.error('[UserService] Error generando tokens en login:', err && err.message ? err.message : err);
+        return { user: userWithoutPassword };
+    }
 }
 
 async function createUser(userData) {
@@ -98,7 +154,18 @@ async function createUser(userData) {
             logger.warn('[UserService] No se pudo crear mensaje de bienvenida:', err && err.message);
         }
 
-        return userWithoutPassword;
+        // generate tokens and persist refreshToken
+        try {
+            const payload = { id: newUser.id, username: newUser.username, email: newUser.email, admin: newUser.admin };
+            const accessToken = generateAccessToken(payload);
+            const refreshToken = generateRefreshToken(payload);
+            await newUser.update({ refreshToken });
+            userWithoutPassword._refreshToken = refreshToken;
+            return { user: userWithoutPassword, accessToken, refreshToken };
+        } catch (err) {
+            logger.error('[UserService] Error generando tokens en createUser:', err && err.message ? err.message : err);
+            return { user: userWithoutPassword };
+        }
     } catch (error) {
         logger.error("[UserService] Error al crear usuario:", error);
         if (error.name === 'SequelizeUniqueConstraintError') {
@@ -167,4 +234,6 @@ module.exports = {
     getAllUsers,
     getUserById,
     getProfileById,
+    refreshTokens,
+    revokeRefreshTokenForUser,
 };

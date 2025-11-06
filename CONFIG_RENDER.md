@@ -12,10 +12,20 @@ IMPORTANTE: Nunca subas un `.env` con credenciales reales a un repositorio públ
 - `JWT_SECRET` — Secreto largo para firmar JWT.
   - Uso: firmar/verificar tokens JWT.
   - Recomendación: generar al menos 32-64 bytes hex, por ejemplo: `openssl rand -hex 64`.
-
+- `REFRESH_TOKEN_EXPIRES_IN` (opcional, ejemplo `7d`)
+- `DB_SSL_REJECT_UNAUTHORIZED` = `0` o `1` según tu configuración de certificados
 - `NODE_ENV` — `production` en Render.
   - Uso: activa comprobaciones de seguridad (e.g., requerir `SYSTEM_PASSWORD`).
 
+Seguridad y cookies
+-------------------
+Cuando uses refresh tokens desde el servidor, recomendamos:
+
+- Configurar `NODE_ENV=production` en Render — el servidor marcará la cookie `secure` cuando esté en producción.
+- Asegurarse de que `JWT_SECRET` sea una cadena fuerte y única en producción.
+- Si vas a servir el frontend desde otro dominio (cross-site), añade políticas CORS y considera CSRF para las rutas que dependen exclusivamente de cookies.
+
+Datos de despliegue
 - `SYSTEM_PASSWORD` — Contraseña del usuario `system` (obligatorio en producción).
   - Uso: permite al servidor asegurar/actualizar el usuario sistema sin exponer la contraseña en el código.
   - Recomendación: usar un valor fuerte y almacenarlo en las Environment variables del servicio Render.

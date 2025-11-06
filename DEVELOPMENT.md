@@ -172,6 +172,31 @@ Variables opcionales pero recomendadas:
 - `SYSTEM_PASSWORD` = contraseña del usuario `system` (si quieres usar el seeder manualmente o conservar la cuenta `system` en la BD)
 - `SYSTEM_USERNAME`, `SYSTEM_EMAIL`, `SYSTEM_ADMIN`
 
+Token refresh (nuevo) — notas para frontend
+-------------------------------------------
+Se ha implementado un sistema de refresh tokens para evitar que el usuario tenga que volver a autenticarse cada hora. Resumen del contrato entre backend y frontend:
+
+- Al hacer login o registrarse el backend devuelve un `accessToken` (corto, 1h) y además setea un `refreshToken` en una cookie `HttpOnly` llamada `refreshToken` (máx. 7 días).
+- El `accessToken` debe enviarse en las peticiones protegidas en el header `Authorization: Bearer <accessToken>`.
+- Cuando el `accessToken` caduque, el frontend debe solicitar un nuevo `accessToken` llamando a `POST /api/users/refresh`.
+  - El backend acepta el `refreshToken` automáticamente desde la cookie `refreshToken` (preferido) o también desde el body `refreshToken` o header `x-refresh-token`.
+  - El backend rota el `refreshToken`: genera un nuevo par (access + refresh), almacena el nuevo refresh en el servidor, setea la cookie `refreshToken` y devuelve el nuevo `accessToken` en el body.
+- Para cerrar sesión, llamar a `POST /api/users/logout` — el backend invalidará el refresh token en servidor y eliminará la cookie `refreshToken`.
+
+Recomendaciones para el frontend:
+- Guardar el `accessToken` en memoria (por seguridad) o en `localStorage` si necesitas persistencia entre recargas.
+- Preferir que el `refreshToken` sea manejado por el servidor en una `HttpOnly` cookie: es la opción más segura frente a XSS.
+- Antes de que el `accessToken` expire (p. ej. a los 50-55 minutos) o cuando recibas 401, llamar a `POST /api/users/refresh` para obtener un nuevo `accessToken`.
+- En cada refresh la cookie `refreshToken` será rotada por seguridad; no intentes reutilizar tokens antiguos.
+
+Cambios en la API:
+- `POST /api/users/login` — devuelve `{ user, accessToken }` y setea cookie `refreshToken`.
+- `POST /api/users/create` — devuelve `{ user, accessToken }` y setea cookie `refreshToken`.
+- `POST /api/users/refresh` — acepta refresh token vía cookie o body/header y devuelve `{ user, accessToken }` y setea nueva cookie `refreshToken`.
+- `POST /api/users/logout` — invalida refresh token y borra cookie.
+
+Si quieres, puedo también adaptar la API para devolver el `refreshToken` en el cuerpo (si prefieres controlarlo desde el frontend), pero la configuración actual setea cookie HttpOnly por seguridad.
+
 Start command en Render: `npm start`
 Build command: (vacío; no hay build step JS puro)
 

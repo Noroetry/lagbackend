@@ -59,8 +59,14 @@ module.exports = (sequelize) => {
         range: {
             type: DataTypes.STRING,
             allowNull: false,
-            defaultValue: 'Z-',
+            defaultValue: 'Z',
         },
+            // Refresh token almacenado (opcional). Se usa para validar refresh tokens y permitir rotación.
+            refreshToken: {
+                type: DataTypes.STRING,
+                allowNull: true,
+                defaultValue: null,
+            },
     }, {
         tableName: 'users' 
     });
