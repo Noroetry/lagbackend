@@ -5,19 +5,26 @@ const logger = require('../utils/logger');
 async function refreshToken(req, res) {
     const logger = require('../utils/logger');
     try {
-        const provided = req.body.refreshToken || req.headers['x-refresh-token'];
+    const provided = req.body.refreshToken || req.headers['x-refresh-token'] || (req.cookies && req.cookies.refreshToken);
         if (!provided) return res.status(400).json({ error: 'refreshToken missing' });
         const result = await userService.refreshTokens(provided);
         // return new pair and user profile
         const { user, accessToken, refreshToken } = result;
         user._id = String(user.id || user._id);
         try {
-            res.cookie('refreshToken', refreshToken, {
+            const cookieOptions = {
                 httpOnly: true,
-                secure: process.env.NODE_ENV === 'production',
-                sameSite: 'lax',
+                secure: process.env.COOKIE_SECURE === 'true' ? true : (process.env.NODE_ENV === 'production'),
+                sameSite: (process.env.COOKIE_SAMESITE || (process.env.NODE_ENV === 'production' ? 'none' : 'lax')).toLowerCase(),
                 maxAge: 7 * 24 * 60 * 60 * 1000
-            });
+            };
+            res.cookie('refreshToken', refreshToken, cookieOptions);
+            try {
+                const setCookieHeader = res.getHeader && res.getHeader('Set-Cookie');
+                logger.debug('[UserController] Set-Cookie header after setting refresh token:', setCookieHeader);
+            } catch (e) {
+                logger.debug('[UserController] No se pudo leer Set-Cookie header:', e && e.message ? e.message : e);
+            }
         } catch (e) {
             logger.debug('[UserController] No se pudo establecer cookie refreshToken:', e.message || e);
         }
@@ -32,14 +39,16 @@ async function logout(req, res) {
     const logger = require('../utils/logger');
     try {
         // Accept refreshToken in body or use authenticated user
-        const provided = req.body.refreshToken || req.headers['x-refresh-token'];
+    const provided = req.body.refreshToken || req.headers['x-refresh-token'] || (req.cookies && req.cookies.refreshToken);
         if (provided) {
             // verify to get id
             try {
-                const decoded = jwt.verify(provided, process.env.JWT_SECRET);
+                const decoded = jwt.verify(provided, process.env.JWT_SECRET || 'development_lag_token');
                 await userService.revokeRefreshTokenForUser(decoded.id);
                 // clear cookie if present
-                try { res.clearCookie('refreshToken'); } catch (e) {}
+                try {
+                    res.clearCookie('refreshToken');
+                } catch (e) {}
                 return res.status(200).json({ message: 'Logged out' });
             } catch (err) {
                 return res.status(400).json({ error: 'refreshToken inválido' });
@@ -73,12 +82,19 @@ async function login(req, res) {
         userForClient._id = String(userForClient.id || userForClient._id);
         // Set refresh token as HttpOnly cookie for extra security (frontend should prefer this)
         try {
-            res.cookie('refreshToken', refreshToken, {
+            const cookieOptions = {
                 httpOnly: true,
-                secure: process.env.NODE_ENV === 'production',
-                sameSite: 'lax',
+                secure: process.env.COOKIE_SECURE === 'true' ? true : (process.env.NODE_ENV === 'production'),
+                sameSite: (process.env.COOKIE_SAMESITE || (process.env.NODE_ENV === 'production' ? 'none' : 'lax')).toLowerCase(),
                 maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-            });
+            };
+            res.cookie('refreshToken', refreshToken, cookieOptions);
+            try {
+                const setCookieHeader = res.getHeader && res.getHeader('Set-Cookie');
+                logger.debug('[UserController] Set-Cookie header after setting refresh token (createUser):', setCookieHeader);
+            } catch (e) {
+                logger.debug('[UserController] No se pudo leer Set-Cookie header:', e && e.message ? e.message : e);
+            }
         } catch (e) {
             logger.debug('[UserController] No se pudo establecer cookie refreshToken:', e.message || e);
         }
@@ -128,8 +144,21 @@ async function createUser(req, res) {
     logger.debug('[UserController] Iniciando creación de usuario en el servicio');
     const result = await userService.createUser(userData);
         
-    logger.debug('[UserController] Usuario creado exitosamente y tokens generados');
-        const { user, accessToken, refreshToken } = result;
+    logger.debug('[UserController] Usuario creado; intentando obtener tokens (si no fueron devueltos por el servicio)');
+        let { user, accessToken, refreshToken } = result;
+        // Si por alguna razón el servicio de creación no devolvió tokens, intentamos login inmediato
+        if (!accessToken || !refreshToken) {
+            try {
+                logger.debug('[UserController] Tokens ausentes tras createUser, llamando a login para generar tokens');
+                const loginResult = await userService.login(userData.username, userData.password);
+                accessToken = loginResult.accessToken;
+                refreshToken = loginResult.refreshToken;
+                // merge user info if needed
+                user = loginResult.user || user;
+            } catch (e) {
+                logger.warn('[UserController] No fue posible generar tokens después de crear usuario:', e && e.message ? e.message : e);
+            }
+        }
         const userForClient = Object.assign({}, user);
         userForClient._id = String(userForClient.id || userForClient._id);
         try {

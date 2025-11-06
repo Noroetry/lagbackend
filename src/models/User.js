@@ -63,7 +63,7 @@ module.exports = (sequelize) => {
         },
             // Refresh token almacenado (opcional). Se usa para validar refresh tokens y permitir rotación.
             refreshToken: {
-                type: DataTypes.STRING,
+                type: DataTypes.TEXT,
                 allowNull: true,
                 defaultValue: null,
             },

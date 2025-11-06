@@ -6,12 +6,17 @@ const Message = db.Message;
 const jwt = require('jsonwebtoken');
 
 function generateAccessToken(payload) {
-    return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1h' });
+    const secret = process.env.JWT_SECRET || 'development_lag_token';
+    return jwt.sign(payload, secret, { expiresIn: '1h' });
 }
 
 function generateRefreshToken(payload) {
     // longer lived refresh token
-    return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN || '7d' });
+    // Add a random jti/nonce to ensure the token string is unique on each generation
+    const crypto = require('crypto');
+    const secret = process.env.JWT_SECRET || 'development_lag_token';
+    const payloadWithJti = Object.assign({}, payload, { jti: crypto.randomBytes(16).toString('hex') });
+    return jwt.sign(payloadWithJti, secret, { expiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN || '7d' });
 }
 
 // Rotate refresh token: verify provided refresh token, ensure it matches stored one,
@@ -28,12 +33,14 @@ async function refreshTokens(providedRefreshToken) {
             throw new Error('Refresh token inválido');
         }
         const payload = { id: user.id, username: user.username, email: user.email, admin: user.admin };
-        const newAccessToken = generateAccessToken(payload);
-        const newRefreshToken = generateRefreshToken(payload);
-        await user.update({ refreshToken: newRefreshToken });
-        const userObj = user.toJSON ? user.toJSON() : user;
-        delete userObj.password;
-        return { user: userObj, accessToken: newAccessToken, refreshToken: newRefreshToken };
+    const newAccessToken = generateAccessToken(payload);
+    const newRefreshToken = generateRefreshToken(payload);
+    await user.update({ refreshToken: newRefreshToken });
+    // reload to ensure instance reflects persisted value
+    try { await user.reload(); } catch (e) { /* ignore reload failures */ }
+    const userObj = user.toJSON ? user.toJSON() : user;
+    delete userObj.password;
+    return { user: userObj, accessToken: newAccessToken, refreshToken: newRefreshToken };
     } catch (err) {
         logger.warn('[UserService] Error en refreshTokens:', err && err.message ? err.message : err);
         throw err;
