@@ -27,16 +27,11 @@ module.exports = (sequelize) => {
             allowNull: false,
             defaultValue: 0,
         },
-        // Experiencia del jugador: valor decimal entre 0.00 y 100.00
-        exp: {
-            type: DataTypes.DOUBLE,
+        // Fuente de verdad de la experiencia acumulada por el usuario
+        totalExp: {
+            type: DataTypes.BIGINT,
             allowNull: false,
-            defaultValue: 0.0,
-            validate: {
-                min: 0.0,
-                // max 99.99: when user reaches 100 we'll trigger a level-up in game logic later
-                max: 99.99
-            }
+            defaultValue: 0
         },
         // Nivel del jugador (índice a tabla de niveles en el futuro)
         level: {
