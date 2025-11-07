@@ -7,22 +7,28 @@ try {
 
 const hasDatabaseUrl = !!process.env.DATABASE_URL;
 
+// Build a config object that works for all environments
+const envConfigFromUrl = {
+  use_env_variable: 'DATABASE_URL',
+  dialect: process.env.DB_DIALECT || 'postgres',
+  dialectOptions: (process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false')
+    ? { ssl: { rejectUnauthorized: true } }
+    : { ssl: { rejectUnauthorized: false } }
+};
+
+const envConfigFromParts = {
+  username: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  host: process.env.DB_HOST,
+  port: process.env.DB_PORT,
+  dialect: process.env.DB_DIALECT || 'postgres'
+};
+
+const selectedConfig = hasDatabaseUrl ? envConfigFromUrl : envConfigFromParts;
+
 module.exports = {
-  development: hasDatabaseUrl
-    ? {
-        // Si existe DATABASE_URL preferimos usarla para mantener parity entre app y sequelize-cli
-        use_env_variable: 'DATABASE_URL',
-        dialect: process.env.DB_DIALECT || 'postgres',
-        dialectOptions: {
-          ssl: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' ? { rejectUnauthorized: true } : { rejectUnauthorized: false }
-        }
-      }
-    : {
-        username: process.env.DB_USER,
-        password: process.env.DB_PASSWORD,
-        database: process.env.DB_NAME,
-        host: process.env.DB_HOST,
-        port: process.env.DB_PORT,
-        dialect: process.env.DB_DIALECT || 'postgres',
-      },
+  development: selectedConfig,
+  test: selectedConfig,
+  production: selectedConfig,
 };
