@@ -1,4 +1,9 @@
-require('dotenv').config(); // Cargar variables de entorno
+// Cargar variables de entorno (si dotenv está disponible en el entorno de ejecución)
+try {
+  require('dotenv').config();
+} catch (err) {
+  // dotenv no está instalado en este entorno (por ejemplo, producción donde no se incluyeron devDeps)
+}
 
 const hasDatabaseUrl = !!process.env.DATABASE_URL;
 
