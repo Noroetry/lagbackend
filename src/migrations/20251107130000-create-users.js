@@ -28,10 +28,10 @@ module.exports = {
         allowNull: false,
         defaultValue: 0,
       },
-      exp: {
-        type: Sequelize.DOUBLE,
+      totalExp: {
+        type: Sequelize.BIGINT,
         allowNull: false,
-        defaultValue: 0.0,
+        defaultValue: 0,
       },
       level: {
         type: Sequelize.INTEGER,
