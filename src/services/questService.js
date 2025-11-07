@@ -74,8 +74,11 @@ async function assignQuestToUser(userId) {
 		try {
 			const exists = await QuestsUser.findOne({ where: { idUser: userId, idQuest: q.id }, transaction: t, lock: t.LOCK.UPDATE });
 			if (!exists) {
-				const cu = await createQuestUser(userId, q, t);
-				created.push(cu.toJSON ? cu.toJSON() : cu);
+					const cu = await createQuestUser(userId, q, t);
+					created.push(cu.toJSON ? cu.toJSON() : cu);
+					// commit the transaction created for this candidate (createQuestUser used the same transaction)
+					await t.commit();
+					continue;
 			} else {
 				await t.commit();
 			}
