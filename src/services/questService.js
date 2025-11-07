@@ -14,12 +14,13 @@ const QuestsUserLog = db.QuestsUserLog;
 
 // Create a QuestsUser entry and corresponding QuestsUserDetail rows
 async function createQuestUser(userId, questHeader, transaction = null) {
-	logger.debug('[QuestService] createQuestUser', userId, questHeader && questHeader.id);
+	logger.debug('[QuestService] createQuestUser start', { userId, questHeaderId: questHeader && questHeader.id });
 	// allow caller to provide a transaction; if none, create one for this operation
 	const tProvided = !!transaction;
 	const t = transaction || await db.sequelize.transaction({ isolationLevel: Sequelize.Transaction.ISOLATION_LEVELS.SERIALIZABLE });
 	try {
 		const details = await QuestsDetail.findAll({ where: { idQuest: questHeader.id }, transaction: t });
+		logger.debug('[QuestService] createQuestUser - details fetched', { count: details.length });
 		const needsParam = details.some(d => d.needParam === true);
 		const state = needsParam ? 'P' : 'N';
 
@@ -46,26 +47,34 @@ async function createQuestUser(userId, questHeader, transaction = null) {
 			}, { transaction: t });
 		}
 
-		if (!tProvided) await t.commit();
-		return created;
+			if (!tProvided) {
+				await t.commit();
+				logger.info('[QuestService] createQuestUser committed', { userId, questId: questHeader && questHeader.id, createdId: created && created.id });
+			}
+			return created;
 	} catch (err) {
-		if (!tProvided) await t.rollback();
-		throw err;
+			if (!tProvided) {
+				await t.rollback();
+				logger.error('[QuestService] createQuestUser rolled back', { userId, questId: questHeader && questHeader.id, error: err && err.message ? err.message : err });
+			}
+			throw err;
 	}
 }
 
 // Assign any missing quests for the user based on level and active flag
 async function assignQuestToUser(userId) {
-	logger.info('[QuestService] assignQuestToUser for', userId);
+	logger.info('[QuestService] assignQuestToUser start', { userId });
 	const user = await User.findByPk(userId);
 	if (!user) throw new Error('Usuario no encontrado');
 
+	logger.debug('[QuestService] assignQuestToUser - user found', { userId, level: user.level });
 	const candidates = await QuestsHeader.findAll({
 		where: {
 			active: true,
 			levelRequired: { [Op.lte]: user.level }
 		}
 	});
+	logger.info('[QuestService] assignQuestToUser - candidates fetched', { userId, candidates: candidates.length });
 
 	const created = [];
 	for (const q of candidates) {
@@ -74,17 +83,20 @@ async function assignQuestToUser(userId) {
 		try {
 			const exists = await QuestsUser.findOne({ where: { idUser: userId, idQuest: q.id }, transaction: t, lock: t.LOCK.UPDATE });
 			if (!exists) {
-					const cu = await createQuestUser(userId, q, t);
-					created.push(cu.toJSON ? cu.toJSON() : cu);
-					// commit the transaction created for this candidate (createQuestUser used the same transaction)
-					await t.commit();
-					continue;
+				logger.debug('[QuestService] assignQuestToUser - creating quest user', { userId, questId: q.id });
+				const cu = await createQuestUser(userId, q, t);
+				created.push(cu.toJSON ? cu.toJSON() : cu);
+				// commit the transaction created for this candidate (createQuestUser used the same transaction)
+				await t.commit();
+				logger.info('[QuestService] assignQuestToUser - quest assigned', { userId, questId: q.id, createdId: cu && cu.id });
+				continue;
 			} else {
+				logger.debug('[QuestService] assignQuestToUser - already exists', { userId, questId: q.id });
 				await t.commit();
 			}
 		} catch (err) {
 			try { await t.rollback(); } catch (e) {}
-			logger.error('[QuestService] assignQuestToUser error for quest', q.id, err && err.message ? err.message : err);
+			logger.error('[QuestService] assignQuestToUser error for quest', { questId: q.id, error: err && err.message ? err.message : err });
 		}
 	}
 	return created;
@@ -92,7 +104,7 @@ async function assignQuestToUser(userId) {
 
 // Process completion or expiration rewards for a given QuestsUser record
 async function processQuestCompletion(userId, questUser) {
-	logger.info('[QuestService] processQuestCompletion for user', userId, 'quest', questUser.idQuest);
+	logger.info('[QuestService] processQuestCompletion start', { userId, questUserId: questUser.id, questId: questUser.idQuest, state: questUser.state });
 	const rewards = [];
 	const t = await db.sequelize.transaction({ isolationLevel: Sequelize.Transaction.ISOLATION_LEVELS.SERIALIZABLE });
 	try {
@@ -102,10 +114,12 @@ async function processQuestCompletion(userId, questUser) {
 		// If already finalized, skip
 		if (qu.state === 'F' && qu.finished) {
 			await t.commit();
+			logger.info('[QuestService] processQuestCompletion - already finalized, skipping', { questUserId: qu.id });
 			return { idQuest: qu.idQuest, state: qu.state, objects: [] };
 		}
 
 		const questObjects = await QuestsObject.findAll({ where: { idQuest: qu.idQuest }, transaction: t });
+		logger.debug('[QuestService] processQuestCompletion - questObjects fetched', { questId: qu.idQuest, count: questObjects.length });
 		const user = await User.findByPk(userId, { transaction: t, lock: t.LOCK.UPDATE });
 		if (!user) throw new Error('Usuario no encontrado');
 
@@ -128,10 +142,12 @@ async function processQuestCompletion(userId, questUser) {
 
 			if (itemType === 'experience' || itemType === 'experiencie') {
 				const toAdd = Math.round(quantity);
+				logger.debug('[QuestService] processQuestCompletion - applying experience', { userId, questId: qu.idQuest, itemId: qo.idObject, toAdd });
 				// increment using transaction
 				await user.increment({ totalExp: toAdd }, { transaction: t });
 				rewards.push({ type: 'experience', quantity: toAdd, appliedAs: qoType });
 			} else {
+				logger.debug('[QuestService] processQuestCompletion - applying object', { userId, questId: qu.idQuest, itemId: qo.idObject, type: item.type, quantity });
 				rewards.push({ type: item.type, quantity, appliedAs: qoType });
 			}
 		}
@@ -140,7 +156,9 @@ async function processQuestCompletion(userId, questUser) {
 			try {
 				const resultChar = (qu.state === 'C') ? 'C' : (qu.state === 'E' ? 'E' : null);
 				if (resultChar && QuestsUserLog) {
+					logger.debug('[QuestService] processQuestCompletion - creating quest user log', { userId, questId: qu.idQuest, result: resultChar, rewards });
 					await createQuestUserLog(userId, qu.idQuest, resultChar, rewards, t);
+					logger.info('[QuestService] processQuestCompletion - quest user log created', { userId, questId: qu.idQuest });
 				}
 			} catch (logErr) {
 				// If logging fails, roll back the whole transaction to avoid partial state
@@ -155,6 +173,7 @@ async function processQuestCompletion(userId, questUser) {
 			await qu.save({ transaction: t });
 
 			await t.commit();
+			logger.info('[QuestService] processQuestCompletion committed', { userId, questId: qu.idQuest, rewardsCount: rewards.length });
 			return { idQuest: qu.idQuest, state: 'F', objects: rewards };
 	} catch (err) {
 		try { await t.rollback(); } catch (e) {}
@@ -181,13 +200,15 @@ async function processQuestCompletion(userId, questUser) {
 
 // Check expiration or completion for quests of a user and process them
 async function updateQuestStates(userId) {
-	logger.info('[QuestService] updateQuestStates for', userId);
+	logger.info('[QuestService] updateQuestStates start', { userId });
 	const results = [];
 	const now = new Date();
 
 	const questUsers = await QuestsUser.findAll({ where: { idUser: userId, state: { [Op.in]: ['C', 'E', 'L'] } } });
+	logger.info('[QuestService] updateQuestStates - questUsers fetched', { userId, count: questUsers.length });
 	for (const qu of questUsers) {
 		try {
+			logger.debug('[QuestService] updateQuestStates processing', { questUserId: qu.id, questId: qu.idQuest, state: qu.state });
 			if (qu.state === 'C' || qu.state === 'E') {
 				const res = await processQuestCompletion(userId, qu);
 				results.push(res);
@@ -211,11 +232,12 @@ async function updateQuestStates(userId) {
 					qu.state = 'C';
 					await qu.save();
 					const res = await processQuestCompletion(userId, qu);
+					logger.info('[QuestService] updateQuestStates - marked completed', { questUserId: qu.id, questId: qu.idQuest });
 					results.push(res);
 				}
 			}
 		} catch (err) {
-			logger.error('[QuestService] Error processing questUser', qu.id, err && err.message ? err.message : err);
+			logger.error('[QuestService] Error processing questUser', { questUserId: qu.id, error: err && err.message ? err.message : err });
 		}
 	}
 
@@ -224,11 +246,13 @@ async function updateQuestStates(userId) {
 
 // Return active quests for a user with details
 async function getActiveQuestsForUser(userId) {
-	logger.debug('[QuestService] getActiveQuestsForUser', userId);
+	logger.debug('[QuestService] getActiveQuestsForUser start', { userId });
 	const active = [];
 	const quests = await QuestsUser.findAll({ where: { idUser: userId, state: { [Op.in]: ['N', 'P', 'L'] } } });
+	logger.info('[QuestService] getActiveQuestsForUser - quests fetched', { userId, count: quests.length });
 	for (const q of quests) {
 		const details = await QuestsUserDetail.findAll({ where: { idUser: userId, idQuest: q.idQuest } });
+		logger.debug('[QuestService] getActiveQuestsForUser - details fetched', { questUserId: q.id, detailsCount: details.length });
 		const formattedDetails = await Promise.all(details.map(async d => {
 			// get template description
 			const template = await QuestsDetail.findByPk(d.idDetail);
