@@ -33,9 +33,15 @@ module.exports = {
         defaultValue: Sequelize.literal('CURRENT_TIMESTAMP')
       }
     });
+    // Unique index for objectName to enforce uniqueness
+    await queryInterface.addIndex('objects', ['objectName'], {
+      name: 'objects_objectName_unique_idx',
+      unique: true
+    });
   },
 
   down: async (queryInterface, Sequelize) => {
+    try { await queryInterface.removeIndex('objects', 'objects_objectName_unique_idx'); } catch (e) {}
     await queryInterface.dropTable('objects');
   }
 };

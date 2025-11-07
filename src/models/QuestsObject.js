@@ -15,6 +15,11 @@ module.exports = (sequelize) => {
       type: DataTypes.INTEGER,
       allowNull: false,
     },
+    type: {
+      type: DataTypes.CHAR(1),
+      allowNull: false,
+      defaultValue: 'R'
+    },
     quantity: {
       type: DataTypes.DOUBLE,
       allowNull: false,

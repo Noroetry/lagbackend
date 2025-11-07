@@ -29,6 +29,11 @@ module.exports = {
         onUpdate: 'CASCADE',
         onDelete: 'CASCADE'
       },
+      type: {
+        type: Sequelize.CHAR(1),
+        allowNull: false,
+        defaultValue: 'R'
+      },
       quantity: {
         type: Sequelize.DOUBLE,
         allowNull: false,
@@ -46,14 +51,14 @@ module.exports = {
       }
     });
 
-    await queryInterface.addIndex('quests_objects', ['idQuest', 'idObject'], {
-      name: 'quests_objects_idQuest_idObject_unique_idx',
+    await queryInterface.addIndex('quests_objects', ['idQuest', 'idObject', 'type'], {
+      name: 'quests_objects_idQuest_idObject_type_unique_idx',
       unique: true
     });
   },
 
   down: async (queryInterface, Sequelize) => {
-    try { await queryInterface.removeIndex('quests_objects', 'quests_objects_idQuest_idObject_unique_idx'); } catch (e) {}
+    try { await queryInterface.removeIndex('quests_objects', 'quests_objects_idQuest_idObject_type_unique_idx'); } catch (e) {}
     await queryInterface.dropTable('quests_objects');
   }
 };

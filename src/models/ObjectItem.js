@@ -10,6 +10,7 @@ module.exports = (sequelize) => {
     objectName: {
       type: DataTypes.STRING,
       allowNull: false,
+      unique: true,
     },
     description: {
       type: DataTypes.TEXT,
@@ -18,6 +19,7 @@ module.exports = (sequelize) => {
     type: {
       type: DataTypes.STRING,
       allowNull: false,
+      defaultValue: 'experience'
     }
   }, {
     tableName: 'objects'
