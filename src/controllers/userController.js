@@ -178,9 +178,16 @@ async function createUser(req, res) {
         });
     } catch (error) {
         logger.error("[UserController] Error al crear usuario:", error.message);
-        // Si el error es una violación de unicidad (email ya existe), devolvemos 400 Bad Request
-        if (error.message.includes('email ya está registrado')) {
-             return res.status(400).json({ error: error.message });
+        // Si el error es una violación de unicidad (SequelizeUniqueConstraintError), devolvemos 409 Conflict
+        if (error && error.name === 'SequelizeUniqueConstraintError') {
+            // extraer campos en conflicto (error.errors[].path)
+            const fields = (error.errors || []).map(e => e.path).filter(Boolean);
+            const uniqueFields = fields.length ? fields.join(', ') : 'username/email';
+            return res.status(409).json({ error: `Registro duplicado: ${uniqueFields} ya existe(n).` });
+        }
+        // Si el servicio lanzó un mensaje específico sobre email/usuario, respetarlo
+        if (error.message && error.message.includes('usuario/email ya está registrado')) {
+            return res.status(409).json({ error: error.message });
         }
         return res.status(500).json({ error: 'Fallo interno del servidor.' });
     }

@@ -176,10 +176,11 @@ async function createUser(userData) {
     } catch (error) {
         logger.error("[UserService] Error al crear usuario:", error);
         if (error.name === 'SequelizeUniqueConstraintError') {
-            console.log(`[UserService] Error de duplicación: ${userData.username} o ${userData.email} ya existe`);
-            throw new Error(`El usuario/email ya está registrado. Por favor, utiliza otro.`);
+            // rethrow the original Sequelize error so controller can inspect which field conflicted
+            logger.warn(`[UserService] Unique constraint violation for username/email: ${userData.username} / ${userData.email}`);
+            throw error;
         }
-        throw error; 
+        throw error;
     }
 }
 

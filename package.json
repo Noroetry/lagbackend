@@ -7,7 +7,14 @@
     "dev": "nodemon server.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "validate": "node scripts/validate-deploy.js",
-    "test:messages": "node tests/messages.test.js"
+    "test:messages": "node tests/messages.test.js",
+    "db:migrate": "npx sequelize-cli db:migrate --config src/config/config.js",
+    "db:migrate:undo": "npx sequelize-cli db:migrate:undo --config src/config/config.js",
+    "db:migrate:status": "npx sequelize-cli db:migrate:status --config src/config/config.js",
+    "db:seed:all": "npx sequelize-cli db:seed:all --config src/config/config.js",
+    "db:create": "npx sequelize-cli db:create --config src/config/config.js",
+    "db:drop": "npx sequelize-cli db:drop --config src/config/config.js",
+    "sequelize": "npx sequelize-cli"
   },
   "keywords": [],
   "author": "",
@@ -22,12 +29,12 @@
     "jsonwebtoken": "^9.0.2",
     "pg": "^8.16.3",
     "pg-hstore": "^2.3.4",
-    "sequelize": "^6.37.7"
+    "sequelize": "^6.37.7",
+    "sequelize-cli": "^6.6.3"
   },
   "devDependencies": {
     "axios": "^1.13.1",
     "dotenv": "^17.2.3",
-    "nodemon": "^3.1.10",
-    "sequelize-cli": "^6.6.3"
+    "nodemon": "^3.1.10"
   }
 }
