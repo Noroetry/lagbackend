@@ -4,6 +4,7 @@ const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const userRoutes = require('./routes/userRoutes');
 const questRoutes = require('./routes/questRoutes');
+const logger = require('./utils/logger');
 
 // Configure CORS to allow credentials (cookies) from frontend origin
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || null;
@@ -19,6 +20,10 @@ app.use(cookieParser());
 
 app.get('/', (req, res) => {
   res.send('API Node.js con Express, Sequelize y PostgreSQL funcionando.');
+});
+
+app.get('/api/ping', (req, res) => {
+  res.status(200).json({ message: 'pong' });
 });
 
 app.use('/api/users', userRoutes);
