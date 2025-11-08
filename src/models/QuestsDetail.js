@@ -33,6 +33,13 @@ module.exports = (sequelize) => {
       allowNull: false,
       defaultValue: false
     }
+    ,
+    // paramType can be 'string' or 'number' (frontend will use this to decide input type)
+    paramType: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      defaultValue: 'number' // text o number por ahora
+    }
   }, {
     tableName: 'quests_details'
   });

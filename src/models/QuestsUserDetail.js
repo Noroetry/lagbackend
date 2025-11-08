@@ -19,8 +19,9 @@ module.exports = (sequelize) => {
       type: DataTypes.INTEGER,
       allowNull: false,
     },
+    // store as TEXT so we can hold strings or numbers; validation will be handled in service
     value: {
-      type: DataTypes.DOUBLE,
+      type: DataTypes.TEXT,
       allowNull: true,
       defaultValue: null
     },

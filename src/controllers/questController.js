@@ -1,5 +1,6 @@
 const questService = require('../services/questService');
 const logger = require('../utils/logger');
+const { formatQuestsPayload } = require('../utils/responseFormatter');
 
 async function loadQuests(req, res) {
   try {
@@ -51,8 +52,8 @@ async function activateQuest(req, res) {
       return res.status(404).json({ error: 'Quest not found or could not be activated' });
     }
 
-    // activated will be the formatted quest object; return as array of one element for frontend reuse
-    return res.status(200).json({ quests: [activated] });
+  // activated will be the formatted quest object; return as array of one element for frontend reuse
+  return res.status(200).json(formatQuestsPayload(activated));
   } catch (err) {
     // If service signals a bad request, propagate 400
     if (err && err.name === 'InvalidQuestState') {
@@ -63,7 +64,61 @@ async function activateQuest(req, res) {
   }
 }
 
+async function submitParams(req, res) {
+  try {
+    // Accept either userId or idUser from frontend (some clients send idUser)
+    const userId = req.body && (req.body.userId || req.body.idUser) ? (req.body.userId || req.body.idUser) : null;
+    // idQuest may refer to the quests_users.id (frontend uses idQuest currently)
+    const idQuest = req.body && (req.body.idQuest || req.body.questUserId) ? (req.body.idQuest || req.body.questUserId) : null;
+
+    // Normalize values: frontend may send either an array `values: [{ idDetail, value }]`,
+    // or an array where each element wraps the payload under `value: { idDetail, value }` —
+    // example from frontend:
+    // values: [ { value: { idDetail: 2, value: 30 }, idUser: 9, idQuest: 18 }, ... ]
+    // Also support the single-item shorthand idDetail+value at top-level.
+    let values = null;
+    if (req.body && Array.isArray(req.body.values)) {
+      // map/flatten incoming values into { idDetail, value }
+      values = req.body.values.map(item => {
+        if (item && item.value && typeof item.value === 'object' && (typeof item.value.idDetail !== 'undefined')) {
+          return { idDetail: item.value.idDetail, value: item.value.value };
+        }
+        if (item && (typeof item.idDetail !== 'undefined')) {
+          return { idDetail: item.idDetail, value: item.value };
+        }
+        // fallback: return as-is (will be validated later)
+        return item;
+      });
+    } else if (req.body && (typeof req.body.idDetail !== 'undefined')) {
+      // single value submission
+      values = [{ idDetail: req.body.idDetail, value: req.body.value }];
+    }
+
+    if (!userId || !idQuest || !values) {
+      logger.warn('[QuestController] submitParams missing params', { body: req.body });
+      return res.status(400).json({ error: 'userId (or idUser), idQuest and values (or idDetail+value) are required' });
+    }
+
+    const result = await questService.saveQuestParams(userId, idQuest, values);
+    if (!result || !result.success) {
+      return res.status(400).json({ error: result && result.message ? result.message : 'Validation failed', details: result && result.details ? result.details : undefined });
+    }
+
+    // Service now returns `quests` array for consistency. If present, return it.
+    if (result.quests) {
+      return res.status(200).json(formatQuestsPayload(result.quests));
+    }
+
+    // Fallback: return updated info
+    return res.status(200).json({ success: true, updated: result.updated });
+  } catch (err) {
+    logger.error('[QuestController] Error in submitParams:', err && err.message ? err.message : err, { stack: err && err.stack ? err.stack : undefined });
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
 module.exports = {
-  loadQuests
-  , activateQuest
+  loadQuests,
+  activateQuest,
+  submitParams
 };

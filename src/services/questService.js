@@ -126,6 +126,7 @@ async function processQuestCompletion(userId, questUser) {
 		// If already finalized, skip
 		if (qu.state === 'F' && qu.finished) {
 			await t.commit();
+			logger.info('[QuestService] saveQuestParams - committed transaction successfully', { userId, idQuest, updatedCount: updated.length });
 			logger.info('[QuestService] processQuestCompletion - already finalized, skipping', { questUserId: qu.id });
 			return { idQuest: qu.idQuest, state: qu.state, objects: [] };
 		}
@@ -188,7 +189,8 @@ async function processQuestCompletion(userId, questUser) {
 			logger.info('[QuestService] processQuestCompletion committed', { userId, questId: qu.idQuest, rewardsCount: rewards.length });
 			return { idQuest: qu.idQuest, state: 'F', objects: rewards };
 	} catch (err) {
-		try { await t.rollback(); } catch (e) {}
+		logger.error('[QuestService] saveQuestParams - caught exception, rolling back', { error: err && err.message ? err.message : err, stack: err && err.stack ? err.stack : undefined });
+		try { await t.rollback(); } catch (e) { logger.error('[QuestService] saveQuestParams - rollback failed', { error: e && e.message ? e.message : e }); }
 		throw err;
 	}
 }
@@ -269,16 +271,25 @@ async function getActiveQuestsForUser(userId) {
 			// get template description
 			const template = await QuestsDetail.findByPk(d.idDetail);
 			return {
+				idQuestUserDetail: d.id,
 				idDetail: d.idDetail,
 				description: template ? template.description : null,
 				needParam: template ? template.needParam : false,
-				checked: !!d.isChecked,
-				paramValue: d.value
+				paramType: (template && typeof template.paramType !== 'undefined' && template.paramType !== null) ? template.paramType : 'string',
+				isEditable: (template && typeof template.isEditable !== 'undefined') ? template.isEditable : false,
+				labelParam: template ? template.labelParam : null,
+				descriptionParam: template ? template.descriptionParam : null,
+				value: d.value,
+				checked: !!d.isChecked
 			};
 		}));
 
 		active.push({
-			idQuest: q.idQuest,
+			idQuestUser: q.id,
+			header: {
+				idQuestHeader: q.idQuest,
+				// Note: q may not have header fields here; keep the header minimal
+			},
 			state: q.state,
 			dateCreated: q.dateCreated,
 			dateExpiration: q.dateExpiration,
@@ -314,7 +325,8 @@ async function getUserQuests(userId) {
 				"d"."description" AS detail_description,
 				"d"."labelParam" AS "detail_labelParam",
 				"d"."descriptionParam" AS "detail_descriptionParam",
-				"d"."isEditable" AS "detail_isEditable"
+				"d"."isEditable" AS "detail_isEditable",
+				"d"."paramType" AS "detail_paramType"
 			FROM "quests_users" AS "uq"
 			LEFT JOIN "quests_headers" AS "h" ON "h"."id" = "uq"."idQuest"
 			LEFT JOIN "quests_users_detail" AS "ud" ON "ud"."idUser" = "uq"."idUser" AND "ud"."idQuest" = "uq"."idQuest"
@@ -353,10 +365,10 @@ async function getUserQuests(userId) {
 	for (const r of rows) {
 		const qid = r.quest_user_id;
 		if (!map.has(qid)) {
-					map.set(qid, {
-						id: qid,
+				map.set(qid, {
+				idQuestUser: qid,
 				header: {
-					id: r.header_id,
+					idQuestHeader: r.header_id,
 					title: r.header_title,
 					description: r.header_description,
 					period: r.header_period,
@@ -369,24 +381,25 @@ async function getUserQuests(userId) {
 			});
 		}
 
-		if (r.user_detail_id) {
+			if (r.user_detail_id) {
 				const entry = map.get(qid);
 				// Log raw values as returned by the DB for debugging
       
 
 						// If template fields were not present in the raw row, try to pick them from templateMap
 						const templateFromMap = (r.detail_id && templateMap && templateMap[r.detail_id]) ? templateMap[r.detail_id] : null;
-						const mappedDetail = {
-							id: r.user_detail_id,
-							idDetail: r.detail_id,
-							description: r.detail_description || (templateFromMap ? templateFromMap.description : null),
-							needParam: (typeof r.detail_needParam !== 'undefined' && r.detail_needParam !== null) ? coerceBool(r.detail_needParam) : (templateFromMap ? coerceBool(templateFromMap.needParam) : false),
-							labelParam: r.detail_labelParam || (templateFromMap ? templateFromMap.labelParam : null),
-							descriptionParam: r.detail_descriptionParam || (templateFromMap ? templateFromMap.descriptionParam : null),
-							isEditable: (typeof r.detail_isEditable !== 'undefined' && r.detail_isEditable !== null) ? coerceBool(r.detail_isEditable) : (templateFromMap ? coerceBool(templateFromMap.isEditable) : false),
-							value: r.detail_value,
-							checked: coerceBool(r.detail_checked)
-						};
+					const mappedDetail = {
+						idQuestUserDetail: r.user_detail_id,
+						idDetail: r.detail_id,
+						description: r.detail_description || (templateFromMap ? templateFromMap.description : null),
+						needParam: (typeof r.detail_needParam !== 'undefined' && r.detail_needParam !== null) ? coerceBool(r.detail_needParam) : (templateFromMap ? coerceBool(templateFromMap.needParam) : false),
+						paramType: (typeof r.detail_paramType !== 'undefined' && r.detail_paramType !== null) ? r.detail_paramType : (templateFromMap && typeof templateFromMap.paramType !== 'undefined' && templateFromMap.paramType !== null ? templateFromMap.paramType : 'string'),
+						labelParam: r.detail_labelParam || (templateFromMap ? templateFromMap.labelParam : null),
+						descriptionParam: r.detail_descriptionParam || (templateFromMap ? templateFromMap.descriptionParam : null),
+						isEditable: (typeof r.detail_isEditable !== 'undefined' && r.detail_isEditable !== null) ? coerceBool(r.detail_isEditable) : (templateFromMap ? coerceBool(templateFromMap.isEditable) : false),
+						value: r.detail_value,
+						checked: coerceBool(r.detail_checked)
+					};
 
       
 
@@ -398,10 +411,10 @@ async function getUserQuests(userId) {
 	if (map.size === 0) {
 		const uq = await QuestsUser.findAll({ where: { idUser: userId, state: { [Op.in]: ['N','P','L'] } }, include: [{ model: QuestsHeader }] });
 		for (const q of uq) {
-					map.set(q.id, {
-						id: q.id,
+				map.set(q.id, {
+				idQuestUser: q.id,
 				header: q.QuestsHeader ? {
-					id: q.QuestsHeader.id,
+					idQuestHeader: q.QuestsHeader.id,
 					title: q.QuestsHeader.title,
 					description: q.QuestsHeader.description,
 					period: q.QuestsHeader.period,
@@ -460,9 +473,157 @@ async function activateQuest(userId, questUserId) {
 	// Reuse getUserQuests formatting and return the single quest
 	const quests = await getUserQuests(userId);
 	const qid = Number(questUserId);
-	const found = quests.find(q => Number(q.id) === qid);
+	const found = quests.find(q => Number(q.idQuestUser) === qid);
 	logger.info('[QuestService] activateQuest completed', { userId, questUserId, found: !!found });
 	return found || null;
+}
+
+// Save multiple parameter values for a user's quest.
+// values: [{ idDetail, value }]
+async function saveQuestParams(userId, idQuest, values) {
+	if (!Array.isArray(values) || values.length === 0) {
+		logger.warn('[QuestService] saveQuestParams called with empty values', { userId, idQuest, values });
+		return { success: false, message: 'values must be a non-empty array' };
+	}
+
+	const t = await db.sequelize.transaction();
+	logger.info('[QuestService] saveQuestParams transaction started', { userId, idQuest });
+	const failures = [];
+	const updated = [];
+	try {
+		// lock the QuestsUser row for this user/quest to avoid races
+		let qu = await QuestsUser.findOne({ where: { idUser: userId, idQuest }, transaction: t, lock: t.LOCK.UPDATE });
+		if (!qu) {
+			// It's possible the frontend sent the quests_users.id (questUserId) in `idQuest`.
+			// Try treating the provided idQuest as the PK of the quests_users row.
+			const quByPk = await QuestsUser.findByPk(idQuest, { transaction: t, lock: t.LOCK.UPDATE });
+			if (quByPk) {
+				logger.info('[QuestService] saveQuestParams - treating provided idQuest as quests_users.id', { providedIdQuest: idQuest, questUserId: quByPk.id, idUser: quByPk.idUser, idQuestTemplate: quByPk.idQuest });
+				// If the quests_users row belongs to a different user, override the provided userId (log it)
+				if (String(quByPk.idUser) !== String(userId)) {
+					logger.warn('[QuestService] saveQuestParams - provided userId differs from quests_users.row, overriding userId', { providedUserId: userId, actualUserId: quByPk.idUser });
+					userId = quByPk.idUser;
+				}
+				// Use the found quests_users row and make idQuest refer to the template id from that row
+				qu = quByPk;
+				idQuest = quByPk.idQuest;
+			}
+		}
+
+		if (!qu) {
+			logger.warn('[QuestService] saveQuestParams - QuestsUser not found', { userId, idQuest });
+			await t.rollback();
+			return { success: false, message: 'QuestsUser row not found' };
+		}
+		logger.info('[QuestService] saveQuestParams - locked QuestsUser', { questUserId: qu.id, userId, idQuest, state: qu.state });
+		for (const v of values) {
+			// Determine what the caller sent. We accept either:
+			// - { idDetail, value } where idDetail is the template id (quests_details.id)
+			// - { idQuestUserDetail, value } where idQuestUserDetail is the PK of quests_users_detail
+			// - nested shapes where value is an object containing the above
+			let idDetail = null;
+			let rawValue = null;
+			// item might be the wrapped object from frontend
+			if (v && v.value && typeof v.value === 'object' && (typeof v.value.idDetail !== 'undefined' || typeof v.value.idQuestUserDetail !== 'undefined')) {
+				// e.g. { value: { idQuestUserDetail: 30, value: 15 } }
+				if (typeof v.value.idDetail !== 'undefined') idDetail = v.value.idDetail;
+				if (typeof v.value.idQuestUserDetail !== 'undefined') v._idQuestUserDetail = v.value.idQuestUserDetail; // stash for later
+				rawValue = typeof v.value.value !== 'undefined' ? v.value.value : null;
+			} else {
+				// flat shape: { idDetail, value } or { id: ..., value: ... }
+				idDetail = v && (v.idDetail || v.id) ? (v.idDetail || v.id) : null;
+				rawValue = typeof v.value !== 'undefined' ? v.value : null;
+				// also support explicit idQuestUserDetail at top-level
+				if (!idDetail && v && (v.idQuestUserDetail || v.idQuestUserDetail === 0)) v._idQuestUserDetail = v.idQuestUserDetail;
+			}
+
+			logger.debug('[QuestService] saveQuestParams - value item normalized', { item: v, idDetail, rawValue, idQuestUserDetail: v._idQuestUserDetail });
+
+			// If caller provided the quests_users_detail PK (idQuestUserDetail), load that row first
+			let userDetail = null;
+			if (v && v._idQuestUserDetail) {
+				userDetail = await QuestsUserDetail.findByPk(v._idQuestUserDetail, { transaction: t, lock: t.LOCK.UPDATE });
+				if (!userDetail) {
+					failures.push({ idDetail: v._idQuestUserDetail, message: 'user detail row not found (by PK)' });
+					continue;
+				}
+				// get the template id from the user detail row
+				idDetail = userDetail.idDetail;
+			}
+
+			if (!idDetail) {
+				failures.push({ idDetail: null, message: 'idDetail missing' });
+				continue;
+			}
+
+			const template = await QuestsDetail.findByPk(idDetail, { transaction: t });
+			if (!template) {
+				failures.push({ idDetail, message: 'detail template not found' });
+				continue;
+			}
+
+			const paramType = (typeof template.paramType !== 'undefined' && template.paramType !== null) ? template.paramType : 'string';
+			logger.debug('[QuestService] saveQuestParams - template paramType', { idDetail, paramType });
+
+			let storeVal = null;
+			if (paramType === 'number') {
+				const n = Number(rawValue);
+				if (Number.isNaN(n)) {
+					failures.push({ idDetail, message: 'value must be a number' });
+					continue;
+				}
+				// store normalized number as string in TEXT column
+				storeVal = String(n);
+			} else {
+				// accept anything, store as string
+				storeVal = rawValue === null || typeof rawValue === 'undefined' ? null : String(rawValue);
+			}
+
+			// If we didn't already load the userDetail by PK above, find the user's detail row by (idUser, idQuest, idDetail)
+			if (!userDetail) {
+				userDetail = await QuestsUserDetail.findOne({ where: { idUser: userId, idQuest: idQuest, idDetail: idDetail }, transaction: t, lock: t.LOCK.UPDATE });
+				if (!userDetail) {
+					failures.push({ idDetail, message: 'user detail row not found' });
+					continue;
+				}
+			}
+
+			userDetail.value = storeVal;
+			await userDetail.save({ transaction: t });
+			updated.push({ idDetail, value: storeVal, idQuestUserDetail: userDetail.id });
+			logger.info('[QuestService] saveQuestParams - saved QuestsUserDetail', { idDetail, id: userDetail.id, idUser: userDetail.idUser, idQuest: userDetail.idQuest });
+		}
+
+		if (failures.length > 0) {
+			logger.warn('[QuestService] saveQuestParams - failures detected, rolling back', { failures });
+			await t.rollback();
+			return { success: false, message: 'validation errors', details: failures };
+		}
+
+				// All params saved OK: mark the QuestsUser state to 'N' (no longer pending params)
+				try {
+					logger.info('[QuestService] saveQuestParams - updating QuestsUser state to N', { questUserId: qu.id, previousState: qu.state });
+					qu.state = 'N';
+					await qu.save({ transaction: t });
+				} catch (e) {
+					// if we can't update the quest user state, rollback
+					await t.rollback();
+					throw e;
+				}
+
+				await t.commit();
+
+				// Reuse getUserQuests to return the formatted quest object to the caller
+				const quests = await getUserQuests(userId);
+				// find the quest whose header id matches idQuest OR whose quest_user id matches qu.id
+				const found = quests.find(q => (q.header && q.header.idQuestHeader === Number(idQuest)) || Number(q.idQuestUser) === Number(qu.id));
+
+				// Return quests as an array for consistency with controllers
+				return { success: true, updated, quests: found ? [found] : [] };
+	} catch (err) {
+		try { await t.rollback(); } catch (e) {}
+		throw err;
+	}
 }
 
 module.exports = {
@@ -472,5 +633,6 @@ module.exports = {
 	processQuestCompletion,
 	getActiveQuestsForUser,
 	getUserQuests,
-	activateQuest
+	activateQuest,
+	saveQuestParams
 };
