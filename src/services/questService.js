@@ -11,16 +11,28 @@ const QuestsUser = db.QuestsUser;
 const QuestsUserDetail = db.QuestsUserDetail;
 const Sequelize = db.Sequelize;
 const QuestsUserLog = db.QuestsUserLog;
+const { QueryTypes } = db.Sequelize;
+
+// Helper to coerce DB boolean-like values into JS boolean reliably
+function coerceBool(v) {
+	if (v === true) return true;
+	if (v === false) return false;
+	if (v === 't' || v === 'true') return true;
+	if (v === 'f' || v === 'false') return false;
+	if (v === 1 || v === '1') return true;
+	if (v === 0 || v === '0') return false;
+	return Boolean(v);
+}
 
 // Create a QuestsUser entry and corresponding QuestsUserDetail rows
 async function createQuestUser(userId, questHeader, transaction = null) {
-	logger.debug('[QuestService] createQuestUser start', { userId, questHeaderId: questHeader && questHeader.id });
+    
 	// allow caller to provide a transaction; if none, create one for this operation
 	const tProvided = !!transaction;
 	const t = transaction || await db.sequelize.transaction({ isolationLevel: Sequelize.Transaction.ISOLATION_LEVELS.SERIALIZABLE });
 	try {
 		const details = await QuestsDetail.findAll({ where: { idQuest: questHeader.id }, transaction: t });
-		logger.debug('[QuestService] createQuestUser - details fetched', { count: details.length });
+        
 		const needsParam = details.some(d => d.needParam === true);
 		const state = needsParam ? 'P' : 'N';
 
@@ -67,7 +79,7 @@ async function assignQuestToUser(userId) {
 	const user = await User.findByPk(userId);
 	if (!user) throw new Error('Usuario no encontrado');
 
-	logger.debug('[QuestService] assignQuestToUser - user found', { userId, level: user.level });
+    
 	const candidates = await QuestsHeader.findAll({
 		where: {
 			active: true,
@@ -83,7 +95,7 @@ async function assignQuestToUser(userId) {
 		try {
 			const exists = await QuestsUser.findOne({ where: { idUser: userId, idQuest: q.id }, transaction: t, lock: t.LOCK.UPDATE });
 			if (!exists) {
-				logger.debug('[QuestService] assignQuestToUser - creating quest user', { userId, questId: q.id });
+                
 				const cu = await createQuestUser(userId, q, t);
 				created.push(cu.toJSON ? cu.toJSON() : cu);
 				// commit the transaction created for this candidate (createQuestUser used the same transaction)
@@ -91,7 +103,7 @@ async function assignQuestToUser(userId) {
 				logger.info('[QuestService] assignQuestToUser - quest assigned', { userId, questId: q.id, createdId: cu && cu.id });
 				continue;
 			} else {
-				logger.debug('[QuestService] assignQuestToUser - already exists', { userId, questId: q.id });
+                
 				await t.commit();
 			}
 		} catch (err) {
@@ -119,7 +131,7 @@ async function processQuestCompletion(userId, questUser) {
 		}
 
 		const questObjects = await QuestsObject.findAll({ where: { idQuest: qu.idQuest }, transaction: t });
-		logger.debug('[QuestService] processQuestCompletion - questObjects fetched', { questId: qu.idQuest, count: questObjects.length });
+        
 		const user = await User.findByPk(userId, { transaction: t, lock: t.LOCK.UPDATE });
 		if (!user) throw new Error('Usuario no encontrado');
 
@@ -142,12 +154,12 @@ async function processQuestCompletion(userId, questUser) {
 
 			if (itemType === 'experience' || itemType === 'experiencie') {
 				const toAdd = Math.round(quantity);
-				logger.debug('[QuestService] processQuestCompletion - applying experience', { userId, questId: qu.idQuest, itemId: qo.idObject, toAdd });
+                
 				// increment using transaction
 				await user.increment({ totalExp: toAdd }, { transaction: t });
 				rewards.push({ type: 'experience', quantity: toAdd, appliedAs: qoType });
 			} else {
-				logger.debug('[QuestService] processQuestCompletion - applying object', { userId, questId: qu.idQuest, itemId: qo.idObject, type: item.type, quantity });
+                
 				rewards.push({ type: item.type, quantity, appliedAs: qoType });
 			}
 		}
@@ -156,7 +168,7 @@ async function processQuestCompletion(userId, questUser) {
 			try {
 				const resultChar = (qu.state === 'C') ? 'C' : (qu.state === 'E' ? 'E' : null);
 				if (resultChar && QuestsUserLog) {
-					logger.debug('[QuestService] processQuestCompletion - creating quest user log', { userId, questId: qu.idQuest, result: resultChar, rewards });
+                    
 					await createQuestUserLog(userId, qu.idQuest, resultChar, rewards, t);
 					logger.info('[QuestService] processQuestCompletion - quest user log created', { userId, questId: qu.idQuest });
 				}
@@ -208,7 +220,7 @@ async function updateQuestStates(userId) {
 	logger.info('[QuestService] updateQuestStates - questUsers fetched', { userId, count: questUsers.length });
 	for (const qu of questUsers) {
 		try {
-			logger.debug('[QuestService] updateQuestStates processing', { questUserId: qu.id, questId: qu.idQuest, state: qu.state });
+            
 			if (qu.state === 'C' || qu.state === 'E') {
 				const res = await processQuestCompletion(userId, qu);
 				results.push(res);
@@ -246,13 +258,13 @@ async function updateQuestStates(userId) {
 
 // Return active quests for a user with details
 async function getActiveQuestsForUser(userId) {
-	logger.debug('[QuestService] getActiveQuestsForUser start', { userId });
+    
 	const active = [];
 	const quests = await QuestsUser.findAll({ where: { idUser: userId, state: { [Op.in]: ['N', 'P', 'L'] } } });
 	logger.info('[QuestService] getActiveQuestsForUser - quests fetched', { userId, count: quests.length });
 	for (const q of quests) {
 		const details = await QuestsUserDetail.findAll({ where: { idUser: userId, idQuest: q.idQuest } });
-		logger.debug('[QuestService] getActiveQuestsForUser - details fetched', { questUserId: q.id, detailsCount: details.length });
+        
 		const formattedDetails = await Promise.all(details.map(async d => {
 			// get template description
 			const template = await QuestsDetail.findByPk(d.idDetail);
@@ -277,10 +289,142 @@ async function getActiveQuestsForUser(userId) {
 	return active;
 }
 
+// Fetch assigned/active quests for a user in a single optimized query using JOINs
+// Returns an array of quest objects formatted for frontend consumption
+async function getUserQuests(userId) {
+	logger.info('[QuestService] getUserQuests start', { userId });
+		const sql = `
+			SELECT
+				"uq"."id" AS quest_user_id,
+				"uq"."idQuest" AS quest_id,
+				"uq"."state" AS quest_state,
+				"uq"."dateRead" AS date_read,
+				"uq"."dateExpiration" AS date_expiration,
+				"h"."id" AS header_id,
+				"h"."title" AS header_title,
+				"h"."description" AS header_description,
+				"h"."period" AS header_period,
+				"h"."duration" AS header_duration,
+				"ud"."id" AS user_detail_id,
+				"ud"."idDetail" AS detail_id,
+				"ud"."value" AS detail_value,
+				"ud"."isChecked" AS detail_checked,
+				"d"."id" AS detail_template_id,
+				"d"."needParam" AS "detail_needParam",
+				"d"."description" AS detail_description,
+				"d"."labelParam" AS "detail_labelParam",
+				"d"."descriptionParam" AS "detail_descriptionParam",
+				"d"."isEditable" AS "detail_isEditable"
+			FROM "quests_users" AS "uq"
+			LEFT JOIN "quests_headers" AS "h" ON "h"."id" = "uq"."idQuest"
+			LEFT JOIN "quests_users_detail" AS "ud" ON "ud"."idUser" = "uq"."idUser" AND "ud"."idQuest" = "uq"."idQuest"
+			LEFT JOIN "quests_details" AS "d" ON "d"."id" = "ud"."idDetail"
+			WHERE "uq"."idUser" = :userId AND "uq"."state" IN ('N','P','L')
+			ORDER BY "uq"."id", "ud"."id"
+		`;
+
+	const rows = await db.sequelize.query(sql, {
+		replacements: { userId },
+		type: QueryTypes.SELECT
+	});
+
+	// If some detail template columns are missing in the raw rows (d.* came back null/undefined),
+	// fetch those templates in batch to ensure we have needParam/isEditable/description values.
+	const missingDetailIds = new Set();
+	for (const r of rows) {
+		// if there is a user detail but no template fields, mark to fetch
+		if (r.user_detail_id && (r.detail_template_id === null || typeof r.detail_template_id === 'undefined')) {
+			if (r.detail_id) missingDetailIds.add(r.detail_id);
+		}
+	}
+
+	let templateMap = {};
+	if (missingDetailIds.size > 0) {
+		const ids = Array.from(missingDetailIds);
+		logger.warn('[QuestService] getUserQuests - missing detail templates in raw join, fetching separately', { userId, missingCount: ids.length, ids });
+		const templates = await QuestsDetail.findAll({ where: { id: ids } });
+		for (const t of templates) {
+			templateMap[t.id] = t; // store model instance
+		}
+		logger.debug('[QuestService] getUserQuests - fetched missing templates', { userId, fetched: Object.keys(templateMap).length });
+	}
+
+	const map = new Map();
+	for (const r of rows) {
+		const qid = r.quest_user_id;
+		if (!map.has(qid)) {
+					map.set(qid, {
+						id: qid,
+				header: {
+					id: r.header_id,
+					title: r.header_title,
+					description: r.header_description,
+					period: r.header_period,
+					duration: r.header_duration
+				},
+				state: r.quest_state,
+				dateRead: r.date_read,
+				dateExpiration: r.date_expiration,
+				details: []
+			});
+		}
+
+		if (r.user_detail_id) {
+				const entry = map.get(qid);
+				// Log raw values as returned by the DB for debugging
+      
+
+						// If template fields were not present in the raw row, try to pick them from templateMap
+						const templateFromMap = (r.detail_id && templateMap && templateMap[r.detail_id]) ? templateMap[r.detail_id] : null;
+						const mappedDetail = {
+							id: r.user_detail_id,
+							idDetail: r.detail_id,
+							description: r.detail_description || (templateFromMap ? templateFromMap.description : null),
+							needParam: (typeof r.detail_needParam !== 'undefined' && r.detail_needParam !== null) ? coerceBool(r.detail_needParam) : (templateFromMap ? coerceBool(templateFromMap.needParam) : false),
+							labelParam: r.detail_labelParam || (templateFromMap ? templateFromMap.labelParam : null),
+							descriptionParam: r.detail_descriptionParam || (templateFromMap ? templateFromMap.descriptionParam : null),
+							isEditable: (typeof r.detail_isEditable !== 'undefined' && r.detail_isEditable !== null) ? coerceBool(r.detail_isEditable) : (templateFromMap ? coerceBool(templateFromMap.isEditable) : false),
+							value: r.detail_value,
+							checked: coerceBool(r.detail_checked)
+						};
+
+      
+
+				entry.details.push(mappedDetail);
+		}
+	}
+
+	// If no rows returned, fallback to simple fetch (no details present)
+	if (map.size === 0) {
+		const uq = await QuestsUser.findAll({ where: { idUser: userId, state: { [Op.in]: ['N','P','L'] } }, include: [{ model: QuestsHeader }] });
+		for (const q of uq) {
+					map.set(q.id, {
+						id: q.id,
+				header: q.QuestsHeader ? {
+					id: q.QuestsHeader.id,
+					title: q.QuestsHeader.title,
+					description: q.QuestsHeader.description,
+					period: q.QuestsHeader.period,
+					duration: q.QuestsHeader.duration
+				} : null,
+				state: q.state,
+				dateRead: q.dateRead,
+				dateExpiration: q.dateExpiration,
+				details: []
+			});
+		}
+	}
+
+	const result = Array.from(map.values());
+	logger.info('[QuestService] getUserQuests completed', { userId, count: result.length });
+	return result;
+}
+
 module.exports = {
 	assignQuestToUser,
 	createQuestUser,
 	updateQuestStates,
 	processQuestCompletion,
-	getActiveQuestsForUser
+	getActiveQuestsForUser,
+	getUserQuests
 };
