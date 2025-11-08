@@ -420,11 +420,57 @@ async function getUserQuests(userId) {
 	return result;
 }
 
+// Activate a quest for a user
+// - Verifies the QuestsUser exists and is in state 'N'
+// - Sets state -> 'L', dateRead = now, dateExpiration = now + duration (minutes)
+// - Returns the formatted quest object (same shape as getUserQuests returns for each quest)
+async function activateQuest(userId, questUserId) {
+	logger.info('[QuestService] activateQuest start', { userId, questUserId });
+
+	const qu = await QuestsUser.findOne({ where: { id: questUserId, idUser: userId } });
+	if (!qu) {
+		logger.warn('[QuestService] activateQuest - quest user not found', { userId, questUserId });
+		return null;
+	}
+
+	if (qu.state !== 'N') {
+		const err = new Error('Quest must be in state N to activate');
+		err.name = 'InvalidQuestState';
+		logger.warn('[QuestService] activateQuest - invalid state', { userId, questUserId, state: qu.state });
+		throw err;
+	}
+
+	// fetch header to read duration and possibly period
+	const header = await QuestsHeader.findByPk(qu.idQuest);
+	const now = new Date();
+	let dateExpiration = null;
+	try {
+		const duration = header && typeof header.duration !== 'undefined' ? Number(header.duration) : 0;
+		// duration is interpreted in minutes
+		dateExpiration = duration > 0 ? new Date(now.getTime() + duration * 60000) : null;
+	} catch (e) {
+		dateExpiration = null;
+	}
+
+	qu.state = 'L';
+	qu.dateRead = now;
+	qu.dateExpiration = dateExpiration;
+	await qu.save();
+
+	// Reuse getUserQuests formatting and return the single quest
+	const quests = await getUserQuests(userId);
+	const qid = Number(questUserId);
+	const found = quests.find(q => Number(q.id) === qid);
+	logger.info('[QuestService] activateQuest completed', { userId, questUserId, found: !!found });
+	return found || null;
+}
+
 module.exports = {
 	assignQuestToUser,
 	createQuestUser,
 	updateQuestStates,
 	processQuestCompletion,
 	getActiveQuestsForUser,
-	getUserQuests
+	getUserQuests,
+	activateQuest
 };
