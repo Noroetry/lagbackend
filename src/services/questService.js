@@ -289,6 +289,7 @@ async function getActiveQuestsForUser(userId) {
 			header: {
 				idQuestHeader: q.idQuest,
 				// Note: q may not have header fields here; keep the header minimal
+				welcomeMessage: null
 			},
 			state: q.state,
 			dateCreated: q.dateCreated,
@@ -314,6 +315,7 @@ async function getUserQuests(userId) {
 				"h"."id" AS header_id,
 				"h"."title" AS header_title,
 				"h"."description" AS header_description,
+				"h"."welcomeMessage" AS header_welcome_message,
 				"h"."period" AS header_period,
 				"h"."duration" AS header_duration,
 				"ud"."id" AS user_detail_id,
@@ -369,10 +371,11 @@ async function getUserQuests(userId) {
 				idQuestUser: qid,
 				header: {
 					idQuestHeader: r.header_id,
-					title: r.header_title,
-					description: r.header_description,
-					period: r.header_period,
-					duration: r.header_duration
+						title: r.header_title,
+						description: r.header_description,
+						welcomeMessage: (typeof r.header_welcome_message !== 'undefined') ? r.header_welcome_message : null,
+						period: r.header_period,
+						duration: r.header_duration
 				},
 				state: r.quest_state,
 				dateRead: r.date_read,
@@ -411,12 +414,13 @@ async function getUserQuests(userId) {
 	if (map.size === 0) {
 		const uq = await QuestsUser.findAll({ where: { idUser: userId, state: { [Op.in]: ['N','P','L'] } }, include: [{ model: QuestsHeader }] });
 		for (const q of uq) {
-				map.set(q.id, {
+				map.set(qid, {
 				idQuestUser: q.id,
 				header: q.QuestsHeader ? {
 					idQuestHeader: q.QuestsHeader.id,
 					title: q.QuestsHeader.title,
 					description: q.QuestsHeader.description,
+					welcomeMessage: typeof q.QuestsHeader.welcomeMessage !== 'undefined' ? q.QuestsHeader.welcomeMessage : null,
 					period: q.QuestsHeader.period,
 					duration: q.QuestsHeader.duration
 				} : null,

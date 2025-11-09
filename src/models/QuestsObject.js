@@ -31,10 +31,11 @@ module.exports = (sequelize) => {
 
   QuestsObject.associate = function(models) {
     if (models.QuestsHeader) {
-      QuestsObject.belongsTo(models.QuestsHeader, { foreignKey: 'idQuest' });
+      QuestsObject.belongsTo(models.QuestsHeader, { foreignKey: 'idQuest', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
     }
     if (models.ObjectItem) {
-      QuestsObject.belongsTo(models.ObjectItem, { foreignKey: 'idObject' });
+      // idObject references objects table; migration already sets onDelete CASCADE there
+      QuestsObject.belongsTo(models.ObjectItem, { foreignKey: 'idObject', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
     }
   };
 

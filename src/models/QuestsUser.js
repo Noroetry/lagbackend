@@ -51,13 +51,14 @@ module.exports = (sequelize) => {
 
   QuestsUser.associate = function(models) {
     if (models.User) {
-      QuestsUser.belongsTo(models.User, { foreignKey: 'idUser' });
+      QuestsUser.belongsTo(models.User, { foreignKey: 'idUser', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
     }
     if (models.QuestsHeader) {
-      QuestsUser.belongsTo(models.QuestsHeader, { foreignKey: 'idQuest' });
+      QuestsUser.belongsTo(models.QuestsHeader, { foreignKey: 'idQuest', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
     }
     if (models.QuestsUserDetail) {
-      QuestsUser.hasMany(models.QuestsUserDetail, { foreignKey: 'idUser' });
+      // QuestsUser has many user-detail rows (by idUser) — cascade when user deleted
+      QuestsUser.hasMany(models.QuestsUserDetail, { foreignKey: 'idUser', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
     }
   };
 

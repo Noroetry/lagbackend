@@ -15,6 +15,11 @@ module.exports = (sequelize) => {
       type: DataTypes.TEXT,
       allowNull: false,
     },
+    welcomeMessage: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      defaultValue: null
+    },
     period: {
       type: DataTypes.STRING(1),
       allowNull: false,
@@ -56,13 +61,14 @@ module.exports = (sequelize) => {
 
   QuestsHeader.associate = function(models) {
     if (models.QuestsDetail) {
-      QuestsHeader.hasMany(models.QuestsDetail, { foreignKey: 'idQuest' });
+      // Ensure cascade at ORM level as well
+      QuestsHeader.hasMany(models.QuestsDetail, { foreignKey: 'idQuest', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
     }
     if (models.QuestsObject) {
-      QuestsHeader.hasMany(models.QuestsObject, { foreignKey: 'idQuest' });
+      QuestsHeader.hasMany(models.QuestsObject, { foreignKey: 'idQuest', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
     }
     if (models.QuestsUser) {
-      QuestsHeader.hasMany(models.QuestsUser, { foreignKey: 'idQuest' });
+      QuestsHeader.hasMany(models.QuestsUser, { foreignKey: 'idQuest', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
     }
   };
 

@@ -12,6 +12,11 @@ module.exports = (sequelize) => {
       allowNull: false,
       unique: true,
     },
+    shortName: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      defaultValue: null
+    },
     description: {
       type: DataTypes.TEXT,
       allowNull: true,

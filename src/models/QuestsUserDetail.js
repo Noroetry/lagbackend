@@ -41,13 +41,13 @@ module.exports = (sequelize) => {
 
   QuestsUserDetail.associate = function(models) {
     if (models.User) {
-      QuestsUserDetail.belongsTo(models.User, { foreignKey: 'idUser' });
+      QuestsUserDetail.belongsTo(models.User, { foreignKey: 'idUser', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
     }
     if (models.QuestsHeader) {
-      QuestsUserDetail.belongsTo(models.QuestsHeader, { foreignKey: 'idQuest' });
+      QuestsUserDetail.belongsTo(models.QuestsHeader, { foreignKey: 'idQuest', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
     }
     if (models.QuestsDetail) {
-      QuestsUserDetail.belongsTo(models.QuestsDetail, { foreignKey: 'idDetail' });
+      QuestsUserDetail.belongsTo(models.QuestsDetail, { foreignKey: 'idDetail', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
     }
   };
 

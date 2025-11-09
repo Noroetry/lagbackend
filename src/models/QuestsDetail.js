@@ -46,7 +46,7 @@ module.exports = (sequelize) => {
 
   QuestsDetail.associate = function(models) {
     if (models.QuestsHeader) {
-      QuestsDetail.belongsTo(models.QuestsHeader, { foreignKey: 'idQuest' });
+      QuestsDetail.belongsTo(models.QuestsHeader, { foreignKey: 'idQuest', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
     }
   };
 

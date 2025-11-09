@@ -1,0 +1,37 @@
+
+[
+  {
+    "header": {
+      "title": "Leer un libro",
+      "welcomeMessage": "Un lector vive mil vidas antes de morir. La persona que nunca lee vive solamente una.",
+      "description": "Elige un libro, no te obsesiones con que sea el perfecto, solo elígelo.",
+      "period": "D",
+      "duration": 1440,
+      "active": true,
+      "levelRequired": 1,
+      "nextQuest": null
+    },
+    "details": [
+      {
+        "needParam": false,
+        "description": "Lee un mínimo de diez páginas.",
+        "labelParam": "Leer",
+        "descriptionParam": null,
+        "isEditable": false,
+        "paramType": "string"
+      },
+      {
+        "needParam": false,
+        "description": "Dedica diez minutos a reflexionar sobre lo que leíste.",
+        "labelParam": "Reflexión lectora",
+        "descriptionParam": null,
+        "isEditable": false,
+        "paramType": "string"
+      }
+    ],
+    "objects": [
+      { "idObject": 2, "type": "R", "quantity": 35 },
+      { "idObject": 2, "type": "P", "quantity": 10 }
+    ]
+  }
+]
