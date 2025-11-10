@@ -13,7 +13,35 @@ const Sequelize = db.Sequelize;
 const QuestsUserLog = db.QuestsUserLog;
 const { QueryTypes } = db.Sequelize;
 
-// Helper to coerce DB boolean-like values into JS boolean reliably
+function computeNextExpiration(period, fromDate = null) {
+	const now = fromDate ? new Date(fromDate) : new Date();
+	// base target set to today at 03:00
+	const target = new Date(now);
+	target.setHours(3, 0, 0, 0);
+
+	if (now < target) {
+		return target;
+	}
+
+	const p = (period || 'D').toUpperCase();
+	if (p === 'D' || p === 'R') {
+		target.setDate(target.getDate() + 1);
+		return target;
+	}
+	if (p === 'W') {
+		target.setDate(target.getDate() + 7);
+		return target;
+	}
+	if (p === 'M') {
+		const month = target.getMonth();
+		target.setMonth(month + 1);
+		return target;
+	}
+
+	target.setDate(target.getDate() + 1);
+	return target;
+}
+
 function coerceBool(v) {
 	if (v === true) return true;
 	if (v === false) return false;
@@ -169,7 +197,6 @@ async function processQuestCompletion(userId, questUser) {
 			try {
 				const resultChar = (qu.state === 'C') ? 'C' : (qu.state === 'E' ? 'E' : null);
 				if (resultChar && QuestsUserLog) {
-                    
 					await createQuestUserLog(userId, qu.idQuest, resultChar, rewards, t);
 					logger.info('[QuestService] processQuestCompletion - quest user log created', { userId, questId: qu.idQuest });
 				}
@@ -179,11 +206,32 @@ async function processQuestCompletion(userId, questUser) {
 				throw logErr;
 			}
 
-			// Mark quest user as finalized
-			qu.state = 'F';
-			qu.finished = true;
-			qu.dateFinished = new Date();
-			await qu.save({ transaction: t });
+			// If quest is periodic (period != 'U'), re-schedule it to the next fixed reset time (03:00)
+			// Otherwise mark it as finalized (state F)
+			try {
+				const header = await QuestsHeader.findByPk(qu.idQuest, { transaction: t });
+				const period = header && header.period ? String(header.period).toUpperCase() : 'U';
+				if (period !== 'U') {
+					// compute next expiration at 03:00 according to period
+					const nextExp = computeNextExpiration(period, new Date());
+					qu.state = 'L';
+					qu.finished = false;
+					qu.dateFinished = null;
+					qu.dateRead = new Date();
+					qu.dateExpiration = nextExp;
+					await qu.save({ transaction: t });
+					logger.info('[QuestService] processQuestCompletion - quest rescheduled (periodic)', { userId, questId: qu.idQuest, period, nextExpiration: nextExp });
+				} else {
+					qu.state = 'F';
+					qu.finished = true;
+					qu.dateFinished = new Date();
+					await qu.save({ transaction: t });
+				}
+			} catch (reschedErr) {
+				// Any error rescheduling should roll back to avoid inconsistent state
+				logger.error('[QuestService] processQuestCompletion - failed to reschedule or finalize', { error: reschedErr && reschedErr.message ? reschedErr.message : reschedErr });
+				throw reschedErr;
+			}
 
 			await t.commit();
 			logger.info('[QuestService] processQuestCompletion committed', { userId, questId: qu.idQuest, rewardsCount: rewards.length });
@@ -218,7 +266,8 @@ async function updateQuestStates(userId) {
 	const results = [];
 	const now = new Date();
 
-	const questUsers = await QuestsUser.findAll({ where: { idUser: userId, state: { [Op.in]: ['C', 'E', 'L'] } } });
+	// Include 'F' so we can reactivate periodic quests that were previously finalized
+	const questUsers = await QuestsUser.findAll({ where: { idUser: userId, state: { [Op.in]: ['C', 'E', 'L', 'F'] } } });
 	logger.info('[QuestService] updateQuestStates - questUsers fetched', { userId, count: questUsers.length });
 	for (const qu of questUsers) {
 		try {
@@ -226,6 +275,27 @@ async function updateQuestStates(userId) {
 			if (qu.state === 'C' || qu.state === 'E') {
 				const res = await processQuestCompletion(userId, qu);
 				results.push(res);
+				continue;
+			}
+
+			// If a quest is in state 'F' but the header says it's periodic, reactivate it
+			if (qu.state === 'F') {
+				try {
+					const header = await QuestsHeader.findByPk(qu.idQuest);
+					const period = header && header.period ? String(header.period).toUpperCase() : 'U';
+					if (period !== 'U') {
+						const nextExp = computeNextExpiration(period, new Date());
+						qu.state = 'L';
+						qu.finished = false;
+						qu.dateFinished = null;
+						qu.dateRead = new Date();
+						qu.dateExpiration = nextExp;
+						await qu.save();
+						results.push({ idQuest: qu.idQuest, state: 'L', rescheduled: true, nextExpiration: nextExp });
+					}
+				} catch (e) {
+					logger.error('[QuestService] updateQuestStates - failed to reactivate periodic F quest', { questUserId: qu.id, error: e && e.message ? e.message : e });
+				}
 				continue;
 			}
 
