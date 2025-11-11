@@ -45,6 +45,13 @@ module.exports = (sequelize) => {
       allowNull: true,
       defaultValue: null
     }
+    ,
+    // Indicates whether rewards/penalties for this quest-user have been applied
+    rewardDelivered: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
+    }
   }, {
     tableName: 'quests_users'
   });

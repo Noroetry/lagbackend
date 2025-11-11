@@ -14,6 +14,7 @@
     "db:seed:all": "npx sequelize-cli db:seed:all --config src/config/config.js",
     "db:create": "npx sequelize-cli db:create --config src/config/config.js",
     "db:drop": "npx sequelize-cli db:drop --config src/config/config.js",
+  "levels:update": "node scripts/update-users-levels-exponential.js",
     "sequelize": "npx sequelize-cli"
   },
   "keywords": [],

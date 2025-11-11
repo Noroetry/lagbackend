@@ -2,6 +2,7 @@ const db = require('../config/database');
 const { Op } = require('sequelize');
 const User = db.User;
 const Message = db.Message;
+const UsersLevel = db.UsersLevel;
 
 const jwt = require('jsonwebtoken');
 
@@ -231,6 +232,47 @@ async function getProfileById(userId) {
     } catch (err) {
         logger.error('[UserService] Error cargando mensajes para perfil:', err.message || err);
         userObj.messages = [];
+    }
+
+    // Determine user's current level_number by comparing totalExp with users_levels.minExpRequired
+    try {
+        if (UsersLevel) {
+            const totalExp = Number(userObj.totalExp || 0);
+            // find the highest level whose minExpRequired <= totalExp
+            const levelRow = await UsersLevel.findOne({
+                where: { minExpRequired: { [Op.lte]: totalExp } },
+                order: [['minExpRequired', 'DESC']]
+            });
+            const levelNumber = levelRow ? (levelRow.levelNumber || levelRow.get('levelNumber') || levelRow.get('level_number')) : 1;
+            const minExpRequired = levelRow ? Number(levelRow.minExpRequired) : 0;
+
+            // find next level's minExpRequired (or null if at max)
+            let nextRequired = null;
+            try {
+                const nextLevelRow = await UsersLevel.findOne({ where: { levelNumber: Number(levelNumber) + 1 } });
+                if (nextLevelRow) nextRequired = Number(nextLevelRow.minExpRequired);
+            } catch (e) {
+                // ignore errors fetching next level
+            }
+
+            // Expose values expected by frontend
+            userObj.level_number = Number(levelNumber) || 1;
+            userObj.totalExp = Number(userObj.totalExp || 0);
+            userObj.minExpRequired = minExpRequired;
+            userObj.nextRequiredLevel = nextRequired;
+        } else {
+            // fallback behavior when UsersLevel table/model not available
+            userObj.level_number = Number(userObj.level || 1);
+            userObj.totalExp = Number(userObj.totalExp || 0);
+            userObj.minExpRequired = 0;
+            userObj.nextRequiredLevel = null;
+        }
+    } catch (err) {
+        logger.warn('[UserService] Could not determine level metadata from users_levels:', err && err.message ? err.message : err);
+        userObj.level_number = Number(userObj.level || 1);
+        userObj.totalExp = Number(userObj.totalExp || 0);
+        userObj.minExpRequired = 0;
+        userObj.nextRequiredLevel = null;
     }
 
     return userObj;

@@ -12,6 +12,7 @@ const QuestsUserDetail = db.QuestsUserDetail;
 const Sequelize = db.Sequelize;
 const QuestsUserLog = db.QuestsUserLog;
 const { QueryTypes } = db.Sequelize;
+const { processQuestRewards } = require('./rewardService');
 
 function computeNextExpiration(period, fromDate = null) {
 	const now = fromDate ? new Date(fromDate) : new Date();
@@ -204,6 +205,17 @@ async function processQuestCompletion(userId, questUser) {
 				// If logging fails, roll back the whole transaction to avoid partial state
 				logger.error('[QuestService] Failed to create quest user log, rolling back:', logErr && logErr.message ? logErr.message : logErr);
 				throw logErr;
+			}
+
+			// Call external rewards processor. For now this stub will mark rewardDelivered = true.
+			try {
+				if (typeof processQuestRewards === 'function') {
+					await processQuestRewards(qu, t);
+					logger.info('[QuestService] processQuestCompletion - processQuestRewards executed', { userId, questId: qu.idQuest, questUserId: qu.id });
+				}
+			} catch (prErr) {
+				logger.error('[QuestService] processQuestCompletion - processQuestRewards failed', { error: prErr && prErr.message ? prErr.message : prErr });
+				throw prErr;
 			}
 
 			// If quest is periodic (period != 'U'), handle reschedule differently from non-periodic.
