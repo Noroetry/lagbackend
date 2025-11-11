@@ -206,21 +206,44 @@ async function processQuestCompletion(userId, questUser) {
 				throw logErr;
 			}
 
-			// If quest is periodic (period != 'U'), re-schedule it to the next fixed reset time (03:00)
-			// Otherwise mark it as finalized (state F)
+			// If quest is periodic (period != 'U'), handle reschedule differently from non-periodic.
+			// Periodic quests should never end in state 'F'.
 			try {
 				const header = await QuestsHeader.findByPk(qu.idQuest, { transaction: t });
 				const period = header && header.period ? String(header.period).toUpperCase() : 'U';
 				if (period !== 'U') {
 					// compute next expiration at 03:00 according to period
 					const nextExp = computeNextExpiration(period, new Date());
-					qu.state = 'L';
-					qu.finished = false;
-					qu.dateFinished = null;
-					qu.dateRead = new Date();
-					qu.dateExpiration = nextExp;
-					await qu.save({ transaction: t });
-					logger.info('[QuestService] processQuestCompletion - quest rescheduled (periodic)', { userId, questId: qu.idQuest, period, nextExpiration: nextExp });
+					if (qu.state === 'E') {
+						// expired quests: reschedule immediately and reset details for the next cycle
+						try {
+							await QuestsUserDetail.update({ isChecked: false, dateUpdated: new Date() }, { where: { idUser: userId, idQuest: qu.idQuest }, transaction: t });
+							logger.info('[QuestService] processQuestCompletion - reset quest details to unchecked (periodic, expired)', { userId, questId: qu.idQuest });
+						} catch (e) {
+							logger.warn('[QuestService] processQuestCompletion - failed to reset quest details', { userId, questId: qu.idQuest, error: e && e.message ? e.message : e });
+						}
+						// Reschedule to live state for the next cycle
+						qu.state = 'L';
+						qu.finished = false;
+						qu.dateFinished = null;
+						qu.dateRead = new Date();
+						qu.dateExpiration = nextExp;
+						await qu.save({ transaction: t });
+						logger.info('[QuestService] processQuestCompletion - quest rescheduled (periodic, expired)', { userId, questId: qu.idQuest, period, nextExpiration: nextExp });
+					} else if (qu.state === 'C') {
+						// completed quests: award now but keep in 'C' state, mark finished=true so it won't be reprocessed
+						qu.finished = true;
+						qu.dateFinished = new Date();
+						qu.dateExpiration = nextExp; // set when it should next reactivate
+						await qu.save({ transaction: t });
+						logger.info('[QuestService] processQuestCompletion - periodic quest awarded and scheduled for reactivation', { userId, questId: qu.idQuest, period, nextExpiration: nextExp });
+					} else {
+						// fallback: mark as finished but keep state C
+						qu.finished = true;
+						qu.dateFinished = new Date();
+						qu.dateExpiration = nextExp;
+						await qu.save({ transaction: t });
+					}
 				} else {
 					qu.state = 'F';
 					qu.finished = true;
@@ -235,7 +258,7 @@ async function processQuestCompletion(userId, questUser) {
 
 			await t.commit();
 			logger.info('[QuestService] processQuestCompletion committed', { userId, questId: qu.idQuest, rewardsCount: rewards.length });
-			return { idQuest: qu.idQuest, state: 'F', objects: rewards };
+			return { idQuest: qu.idQuest, state: qu.state, objects: rewards };
 	} catch (err) {
 		logger.error('[QuestService] saveQuestParams - caught exception, rolling back', { error: err && err.message ? err.message : err, stack: err && err.stack ? err.stack : undefined });
 		try { await t.rollback(); } catch (e) { logger.error('[QuestService] saveQuestParams - rollback failed', { error: e && e.message ? e.message : e }); }
@@ -272,7 +295,16 @@ async function updateQuestStates(userId) {
 	for (const qu of questUsers) {
 		try {
             
-			if (qu.state === 'C' || qu.state === 'E') {
+			if (qu.state === 'C') {
+				// Only process completion if it hasn't been processed yet (finished !== true)
+				if (!qu.finished) {
+					const res = await processQuestCompletion(userId, qu);
+					results.push(res);
+				}
+				continue;
+			}
+
+			if (qu.state === 'E') {
 				const res = await processQuestCompletion(userId, qu);
 				results.push(res);
 				continue;
@@ -284,14 +316,24 @@ async function updateQuestStates(userId) {
 					const header = await QuestsHeader.findByPk(qu.idQuest);
 					const period = header && header.period ? String(header.period).toUpperCase() : 'U';
 					if (period !== 'U') {
-						const nextExp = computeNextExpiration(period, new Date());
-						qu.state = 'L';
-						qu.finished = false;
-						qu.dateFinished = null;
-						qu.dateRead = new Date();
-						qu.dateExpiration = nextExp;
-						await qu.save();
-						results.push({ idQuest: qu.idQuest, state: 'L', rescheduled: true, nextExpiration: nextExp });
+						// Only reactivate when the stored dateExpiration has arrived
+						if (qu.dateExpiration && new Date(qu.dateExpiration) <= now) {
+							const nextExp = computeNextExpiration(period, new Date());
+							// reset details to unchecked when reactivating
+							try {
+								await QuestsUserDetail.update({ isChecked: false, dateUpdated: new Date() }, { where: { idUser: qu.idUser, idQuest: qu.idQuest } });
+								logger.info('[QuestService] updateQuestStates - reset details on reactivate', { questUserId: qu.id, questId: qu.idQuest });
+							} catch (e) {
+								logger.warn('[QuestService] updateQuestStates - failed to reset details on reactivate', { questUserId: qu.id, questId: qu.idQuest, error: e && e.message ? e.message : e });
+							}
+							qu.state = 'L';
+							qu.finished = false;
+							qu.dateFinished = null;
+							qu.dateRead = new Date();
+							qu.dateExpiration = nextExp;
+							await qu.save();
+							results.push({ idQuest: qu.idQuest, state: 'L', rescheduled: true, nextExpiration: nextExp });
+						}
 					}
 				} catch (e) {
 					logger.error('[QuestService] updateQuestStates - failed to reactivate periodic F quest', { questUserId: qu.id, error: e && e.message ? e.message : e });
@@ -403,7 +445,7 @@ async function getUserQuests(userId) {
 			LEFT JOIN "quests_headers" AS "h" ON "h"."id" = "uq"."idQuest"
 			LEFT JOIN "quests_users_detail" AS "ud" ON "ud"."idUser" = "uq"."idUser" AND "ud"."idQuest" = "uq"."idQuest"
 			LEFT JOIN "quests_details" AS "d" ON "d"."id" = "ud"."idDetail"
-			WHERE "uq"."idUser" = :userId AND "uq"."state" IN ('N','P','L')
+			WHERE "uq"."idUser" = :userId AND "uq"."state" IN ('N','P','L','C')
 			ORDER BY "uq"."id", "ud"."id"
 		`;
 
@@ -482,7 +524,7 @@ async function getUserQuests(userId) {
 
 	// If no rows returned, fallback to simple fetch (no details present)
 	if (map.size === 0) {
-		const uq = await QuestsUser.findAll({ where: { idUser: userId, state: { [Op.in]: ['N','P','L'] } }, include: [{ model: QuestsHeader }] });
+		const uq = await QuestsUser.findAll({ where: { idUser: userId, state: { [Op.in]: ['N','P','L','C'] } }, include: [{ model: QuestsHeader }] });
 		for (const q of uq) {
 				map.set(qid, {
 				idQuestUser: q.id,
@@ -700,6 +742,70 @@ async function saveQuestParams(userId, idQuest, values) {
 	}
 }
 
+// Toggle the isChecked flag for a QuestsUserDetail row.
+// Accepts either idQuestUserDetail (PK) or idQuest + idDetail combination along with userId.
+async function setQuestUserDetailChecked(userId, { idQuestUserDetail = null, idQuest = null, idDetail = null, checked = false } = {}) {
+	logger.info('[QuestService] setQuestUserDetailChecked start', { userId, idQuestUserDetail, idQuest, idDetail, checked });
+	if (!userId) throw new Error('userId is required');
+
+	// Use a transaction with row-level locks to avoid race conditions when multiple
+	// requests try to toggle details or finalize the same quest concurrently.
+	const t = await db.sequelize.transaction({ isolationLevel: Sequelize.Transaction.ISOLATION_LEVELS.SERIALIZABLE });
+	try {
+		let userDetail = null;
+		if (idQuestUserDetail) {
+			// lock the specific user detail row
+			userDetail = await QuestsUserDetail.findByPk(idQuestUserDetail, { transaction: t, lock: t.LOCK.UPDATE });
+			// ensure the detail belongs to the provided userId
+			if (userDetail && String(userDetail.idUser) !== String(userId)) {
+				logger.warn('[QuestService] setQuestUserDetailChecked - ownership mismatch', { requestedUserId: userId, actualUserId: userDetail.idUser, id: userDetail.id });
+				await t.rollback();
+				return null;
+			}
+		} else if (idQuest && idDetail) {
+			// lock the matching detail row for this user/quest/detail
+			userDetail = await QuestsUserDetail.findOne({ where: { idUser: userId, idQuest: idQuest, idDetail: idDetail }, transaction: t, lock: t.LOCK.UPDATE });
+		} else {
+			logger.warn('[QuestService] setQuestUserDetailChecked - missing identifiers', { idQuestUserDetail, idQuest, idDetail });
+			await t.rollback();
+			return null;
+		}
+
+		if (!userDetail) {
+			logger.warn('[QuestService] setQuestUserDetailChecked - QuestsUserDetail not found', { userId, idQuestUserDetail, idQuest, idDetail });
+			await t.rollback();
+			return null;
+		}
+
+		userDetail.isChecked = coerceBool(checked);
+		userDetail.dateUpdated = new Date();
+		await userDetail.save({ transaction: t });
+
+		// After updating this detail, check if all details for this quest are now checked.
+		// Lock all related detail rows to ensure a consistent snapshot.
+		const details = await QuestsUserDetail.findAll({ where: { idUser: userId, idQuest: userDetail.idQuest }, transaction: t, lock: t.LOCK.UPDATE });
+		const allChecked = details.length > 0 && details.every(d => d.isChecked === true);
+		if (allChecked) {
+			// lock the QuestsUser row before modifying
+			const qu = await QuestsUser.findOne({ where: { idUser: userId, idQuest: userDetail.idQuest }, transaction: t, lock: t.LOCK.UPDATE });
+			if (qu) {
+				qu.state = 'C';
+				qu.dateFinished = new Date();
+				await qu.save({ transaction: t });
+				logger.info('[QuestService] setQuestUserDetailChecked - marked quest as C (completed)', { userId, questUserId: qu.id, questId: qu.idQuest });
+			}
+		}
+
+		await t.commit();
+		logger.info('[QuestService] setQuestUserDetailChecked completed', { id: userDetail.id, isChecked: userDetail.isChecked });
+		return userDetail;
+	} catch (e) {
+		try { await t.rollback(); } catch (er) { logger.error('[QuestService] setQuestUserDetailChecked - rollback failed', { error: er && er.message ? er.message : er }); }
+		logger.error('[QuestService] setQuestUserDetailChecked - error', { error: e && e.message ? e.message : e });
+		throw e;
+	}
+}
+
 module.exports = {
 	assignQuestToUser,
 	createQuestUser,
@@ -708,5 +814,6 @@ module.exports = {
 	getActiveQuestsForUser,
 	getUserQuests,
 	activateQuest,
-	saveQuestParams
+	saveQuestParams,
+	setQuestUserDetailChecked
 };

@@ -117,8 +117,45 @@ async function submitParams(req, res) {
   }
 }
 
+async function checkDetailQuest(req, res) {
+  try {
+    // Expect exactly: { userId, idQuestUserDetail, checked }
+    const userId = req.body && (req.body.userId || req.body.idUser) ? (req.body.userId || req.body.idUser) : null;
+    const idQuestUserDetail = req.body && (typeof req.body.idQuestUserDetail !== 'undefined') ? req.body.idQuestUserDetail : null;
+    const checked = typeof req.body.checked !== 'undefined' ? req.body.checked : null;
+
+    if (!userId || idQuestUserDetail === null || checked === null) {
+      logger.warn('[QuestController] checkDetailQuest missing params', { body: req.body });
+      return res.status(400).json({ error: 'userId, idQuestUserDetail and checked are required' });
+    }
+
+    // Delegate to service — using only idQuestUserDetail as unique identifier per request
+    const updated = await questService.setQuestUserDetailChecked(userId, { idQuestUserDetail, checked });
+    if (!updated) {
+      return res.status(404).json({ error: 'Detail not found or does not belong to user' });
+    }
+
+    // After updating the detail, return the full formatted quest object (as an array with one element)
+    // so frontend receives the same shape as activateQuest responses.
+    try {
+      const quests = await questService.getUserQuests(userId);
+      // find by header id (the template id stored in updated.idQuest)
+      const found = quests.find(q => q.header && Number(q.header.idQuestHeader) === Number(updated.idQuest));
+      return res.status(200).json(formatQuestsPayload(found || null));
+    } catch (e) {
+      logger.warn('[QuestController] checkDetailQuest - failed to fetch formatted quest after update', { error: e && e.message ? e.message : e });
+      // fallback: simple 200 if formatting failed
+      return res.sendStatus(200);
+    }
+  } catch (err) {
+    logger.error('[QuestController] Error in checkDetailQuest:', err && err.message ? err.message : err, { stack: err && err.stack ? err.stack : undefined });
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
 module.exports = {
   loadQuests,
   activateQuest,
   submitParams
+  ,checkDetailQuest
 };
