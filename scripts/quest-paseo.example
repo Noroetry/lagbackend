@@ -4,10 +4,13 @@
       "title": "Desconecta del mundo",
       "welcomeMessage": "Hasta que no estamos perdidos no comenzamos a entendernos a nosotros mismos.",
       "description": "No importa el destino, playa, montaña, caminos. Ponte cómodo, deja el teléfono en casa y desconecta por unas horas de todo.",
-      "period": "S",
+      "periodType": "FIXED",
+      "period": "W",
       "duration": 10080,
       "active": true,
       "levelRequired": 1,
+      "baseRewardXP": 1,
+      "basePenaltyXP": 1,
       "nextQuest": null
     },
     "details": [

@@ -88,11 +88,23 @@ async function processQuestRewards(questUser, transaction = null) {
       const quantity = Number(qo.quantity) || 0;
 
       if (itemType === 'experience' || itemType === 'experiencie') {
-        const toAdd = Math.round(quantity);
-        // Use increment to safely update bigints
-        await user.increment({ totalExp: toAdd }, { transaction: t });
-        applied.push({ type: 'experience', quantity: toAdd, idObject: item.id, appliedAs: wantedType });
-        logger.info('[RewardService] processQuestRewards - applied experience', { userId: user.id, added: toAdd });
+        // Rewards add exp; Penalties subtract exp. Never go below 0 totalExp.
+        const absQty = Math.round(Math.abs(quantity));
+        const delta = (wantedType === 'P') ? -absQty : absQty;
+
+        // Apply clamp in DB using GREATEST to avoid negative totals and keep bigint safety
+        try {
+          await db.sequelize.query(
+            'UPDATE "users" SET "totalExp" = GREATEST(0, "totalExp" + :delta) WHERE "id" = :id',
+            { transaction: t, replacements: { delta, id: user.id }, type: Sequelize.QueryTypes.UPDATE }
+          );
+        } catch (e) {
+          logger.error('[RewardService] processQuestRewards - failed to apply exp delta', { userId: user.id, delta, error: e && e.message ? e.message : e });
+          throw e;
+        }
+
+        applied.push({ type: 'experience', quantity: absQty, signedDelta: delta, idObject: item.id, appliedAs: wantedType });
+        logger.info('[RewardService] processQuestRewards - applied experience delta', { userId: user.id, delta, appliedAs: wantedType });
       } else {
         // For now, unhandled item types are logged and ignored; future implementations go here.
         applied.push({ type: item.type, quantity, idObject: item.id, appliedAs: wantedType, note: 'unhandled-type' });

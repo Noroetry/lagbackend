@@ -1,6 +1,7 @@
 const db = require('../config/database');
 const { Op } = require('sequelize');
 const logger = require('../utils/logger');
+const periodUtils = require('../utils/periodUtils');
 
 const User = db.User;
 const QuestsHeader = db.QuestsHeader;
@@ -14,6 +15,10 @@ const QuestsUserLog = db.QuestsUserLog;
 const { QueryTypes } = db.Sequelize;
 const { processQuestRewards } = require('./rewardService');
 
+/**
+ * @deprecated Use periodUtils.computeNextExpiration instead
+ * Legacy function kept for backward compatibility
+ */
 function computeNextExpiration(period, fromDate = null) {
 	const now = fromDate ? new Date(fromDate) : new Date();
 	// base target set to today at 03:00
@@ -145,122 +150,111 @@ async function assignQuestToUser(userId) {
 
 // Process completion or expiration rewards for a given QuestsUser record
 async function processQuestCompletion(userId, questUser) {
-	logger.info('[QuestService] processQuestCompletion start', { userId, questUserId: questUser.id, questId: questUser.idQuest, state: questUser.state });
+	logger.info('[QuestService] processQuestCompletion start', { userId, questUserId: questUser.id, questId: questUser.idQuest, state: questUser.state, rewardDelivered: questUser.rewardDelivered });
 	const rewards = [];
 	const t = await db.sequelize.transaction({ isolationLevel: Sequelize.Transaction.ISOLATION_LEVELS.SERIALIZABLE });
 	try {
 		// reload questUser with lock to avoid concurrent processing
 		const qu = await QuestsUser.findOne({ where: { id: questUser.id }, transaction: t, lock: t.LOCK.UPDATE });
 		if (!qu) throw new Error('QuestsUser record no encontrado');
-		// If already finalized, skip
+		
+		// If already processed (rewardDelivered=true), skip
+		if (qu.rewardDelivered) {
+			await t.commit();
+			logger.info('[QuestService] processQuestCompletion - already processed (rewardDelivered=true), skipping', { questUserId: qu.id });
+			return { idQuest: qu.idQuest, state: qu.state, objects: [] };
+		}
+		
+		// If already finalized to 'F' and finished, skip (legacy support)
 		if (qu.state === 'F' && qu.finished) {
 			await t.commit();
-			logger.info('[QuestService] saveQuestParams - committed transaction successfully', { userId, idQuest, updatedCount: updated.length });
-			logger.info('[QuestService] processQuestCompletion - already finalized, skipping', { questUserId: qu.id });
+			logger.info('[QuestService] processQuestCompletion - already finalized to F, skipping', { questUserId: qu.id });
 			return { idQuest: qu.idQuest, state: qu.state, objects: [] };
 		}
 
-		const questObjects = await QuestsObject.findAll({ where: { idQuest: qu.idQuest }, transaction: t });
-        
-		const user = await User.findByPk(userId, { transaction: t, lock: t.LOCK.UPDATE });
-		if (!user) throw new Error('Usuario no encontrado');
-
-		for (const qo of questObjects) {
-			// qo.type indicates R (reward), P (penalty), A (all)
-			const qoType = (qo.type || 'R').toUpperCase();
-			// Determine whether this object should be applied depending on quest state
-			const applyForCompleted = qoType === 'R' || qoType === 'A';
-			const applyForExpired = qoType === 'P' || qoType === 'A';
-
-			let shouldApply = false;
-			if (qu.state === 'C' && applyForCompleted) shouldApply = true;
-			if (qu.state === 'E' && applyForExpired) shouldApply = true;
-			if (!shouldApply) continue;
-
-			const item = await ObjectItem.findByPk(qo.idObject, { transaction: t });
-			if (!item) continue;
-			const itemType = (item.type || '').toLowerCase();
-			const quantity = Number(qo.quantity) || 0;
-
-			if (itemType === 'experience' || itemType === 'experiencie') {
-				const toAdd = Math.round(quantity);
-                
-				// increment using transaction
-				await user.increment({ totalExp: toAdd }, { transaction: t });
-				rewards.push({ type: 'experience', quantity: toAdd, appliedAs: qoType });
-			} else {
-                
-				rewards.push({ type: item.type, quantity, appliedAs: qoType });
+		// Process rewards/penalties using rewardService
+		// This handles:
+		// - Fetching quest objects and filtering by type (R/P/A) based on quest state (C/E)
+		// - Applying effects to user (experience, items, etc.)
+		// - Marking questUser.rewardDelivered = true
+		try {
+			const rewardResult = await processQuestRewards(qu, t);
+			if (rewardResult && rewardResult.applied) {
+				// Store applied rewards for logging and return value
+				rewards.push(...rewardResult.applied);
 			}
+			logger.info('[QuestService] processQuestCompletion - rewards processed successfully', { 
+				userId, 
+				questId: qu.idQuest, 
+				questUserId: qu.id,
+				appliedCount: rewards.length
+			});
+		} catch (prErr) {
+			logger.error('[QuestService] processQuestCompletion - processQuestRewards failed', { 
+				error: prErr && prErr.message ? prErr.message : prErr 
+			});
+			throw prErr;
 		}
 
-			// Create a log entry for this finalized quest (result depends on prior state C or E)
-			try {
-				const resultChar = (qu.state === 'C') ? 'C' : (qu.state === 'E' ? 'E' : null);
-				if (resultChar && QuestsUserLog) {
-					await createQuestUserLog(userId, qu.idQuest, resultChar, rewards, t);
-					logger.info('[QuestService] processQuestCompletion - quest user log created', { userId, questId: qu.idQuest });
-				}
-			} catch (logErr) {
-				// If logging fails, roll back the whole transaction to avoid partial state
-				logger.error('[QuestService] Failed to create quest user log, rolling back:', logErr && logErr.message ? logErr.message : logErr);
-				throw logErr;
+		// Create a log entry for this finalized quest (result depends on prior state C or E)
+		try {
+			const resultChar = (qu.state === 'C') ? 'C' : (qu.state === 'E' ? 'E' : null);
+			if (resultChar && QuestsUserLog) {
+				await createQuestUserLog(userId, qu.idQuest, resultChar, rewards, t);
+				logger.info('[QuestService] processQuestCompletion - quest user log created', { userId, questId: qu.idQuest });
 			}
+		} catch (logErr) {
+			// If logging fails, roll back the whole transaction to avoid partial state
+			logger.error('[QuestService] Failed to create quest user log, rolling back:', logErr && logErr.message ? logErr.message : logErr);
+			throw logErr;
+		}
 
-			// Call external rewards processor. For now this stub will mark rewardDelivered = true.
-			try {
-				if (typeof processQuestRewards === 'function') {
-					await processQuestRewards(qu, t);
-					logger.info('[QuestService] processQuestCompletion - processQuestRewards executed', { userId, questId: qu.idQuest, questUserId: qu.id });
-				}
-			} catch (prErr) {
-				logger.error('[QuestService] processQuestCompletion - processQuestRewards failed', { error: prErr && prErr.message ? prErr.message : prErr });
-				throw prErr;
-			}
-
-			// If quest is periodic (period != 'U'), handle reschedule differently from non-periodic.
-			// Periodic quests should never end in state 'F'.
+			// If quest is periodic (period != 'U'), keep in state C/E with rewardDelivered=true.
+			// Only unique quests (period='U') go to state 'F'.
+			// Periodic quests are reactivated in updateQuestStates when their next expiration arrives.
+			// IMPORTANT: If quest has been deactivated by admin (active=false), finalize to 'F' instead.
 			try {
 				const header = await QuestsHeader.findByPk(qu.idQuest, { transaction: t });
 				const period = header && header.period ? String(header.period).toUpperCase() : 'U';
-				if (period !== 'U') {
-					// compute next expiration at 03:00 according to period
-					const nextExp = computeNextExpiration(period, new Date());
-					if (qu.state === 'E') {
-						// expired quests: reschedule immediately and reset details for the next cycle
-						try {
-							await QuestsUserDetail.update({ isChecked: false, dateUpdated: new Date() }, { where: { idUser: userId, idQuest: qu.idQuest }, transaction: t });
-							logger.info('[QuestService] processQuestCompletion - reset quest details to unchecked (periodic, expired)', { userId, questId: qu.idQuest });
-						} catch (e) {
-							logger.warn('[QuestService] processQuestCompletion - failed to reset quest details', { userId, questId: qu.idQuest, error: e && e.message ? e.message : e });
-						}
-						// Reschedule to live state for the next cycle
-						qu.state = 'L';
-						qu.finished = false;
-						qu.dateFinished = null;
-						qu.dateRead = new Date();
-						qu.dateExpiration = nextExp;
-						await qu.save({ transaction: t });
-						logger.info('[QuestService] processQuestCompletion - quest rescheduled (periodic, expired)', { userId, questId: qu.idQuest, period, nextExpiration: nextExp });
-					} else if (qu.state === 'C') {
-						// completed quests: award now but keep in 'C' state, mark finished=true so it won't be reprocessed
-						qu.finished = true;
-						qu.dateFinished = new Date();
-						qu.dateExpiration = nextExp; // set when it should next reactivate
-						await qu.save({ transaction: t });
-						logger.info('[QuestService] processQuestCompletion - periodic quest awarded and scheduled for reactivation', { userId, questId: qu.idQuest, period, nextExpiration: nextExp });
-					} else {
-						// fallback: mark as finished but keep state C
-						qu.finished = true;
-						qu.dateFinished = new Date();
-						qu.dateExpiration = nextExp;
-						await qu.save({ transaction: t });
-					}
-				} else {
+				
+				// Check if quest is still active in the system
+				if (!header.active) {
+					// Quest has been deactivated by admin → finalize to 'F' regardless of periodicity
 					qu.state = 'F';
 					qu.finished = true;
 					qu.dateFinished = new Date();
 					await qu.save({ transaction: t });
+					logger.info('[QuestService] processQuestCompletion - quest deactivated by admin, finalized to F', { 
+						userId, 
+						questId: qu.idQuest,
+						previousState: qu.state,
+						period
+					});
+				} else if (period !== 'U') {
+					// Periodic quest: keep current state (C or E), mark finished and schedule next cycle
+					const nextExp = periodUtils.computeNextExpiration(header, new Date());
+					qu.finished = true;
+					qu.dateFinished = new Date();
+					qu.dateExpiration = nextExp; // when it should reactivate for next cycle
+					// State remains 'C' or 'E' - will be checked in updateQuestStates for reactivation
+					await qu.save({ transaction: t });
+					logger.info('[QuestService] processQuestCompletion - periodic quest marked finished, scheduled for reactivation', { 
+						userId, 
+						questId: qu.idQuest, 
+						state: qu.state,
+						period, 
+						nextExpiration: nextExp.toISOString() 
+					});
+				} else {
+					// Unique quest: finalize to state 'F'
+					qu.state = 'F';
+					qu.finished = true;
+					qu.dateFinished = new Date();
+					await qu.save({ transaction: t });
+					logger.info('[QuestService] processQuestCompletion - unique quest finalized to state F', { 
+						userId, 
+						questId: qu.idQuest 
+					});
 				}
 			} catch (reschedErr) {
 				// Any error rescheduling should roll back to avoid inconsistent state
@@ -301,49 +295,223 @@ async function updateQuestStates(userId) {
 	const results = [];
 	const now = new Date();
 
-	// Include 'F' so we can reactivate periodic quests that were previously finalized
+	// Include 'F' for potential reactivation of unique periodic quests (legacy support)
+	// Main states: 'C', 'E', 'L'
 	const questUsers = await QuestsUser.findAll({ where: { idUser: userId, state: { [Op.in]: ['C', 'E', 'L', 'F'] } } });
 	logger.info('[QuestService] updateQuestStates - questUsers fetched', { userId, count: questUsers.length });
 	for (const qu of questUsers) {
 		try {
             
-			if (qu.state === 'C') {
-				// Only process completion if it hasn't been processed yet (finished !== true)
-				if (!qu.finished) {
-					const res = await processQuestCompletion(userId, qu);
-					results.push(res);
-				}
-				continue;
-			}
-
-			if (qu.state === 'E') {
+			// PRIORITY 1: Process rewards for C/E states that haven't been delivered yet
+			// This must happen BEFORE attempting reactivation
+			if ((qu.state === 'C' || qu.state === 'E') && !qu.rewardDelivered) {
+				// Process completion/expiration rewards
 				const res = await processQuestCompletion(userId, qu);
 				results.push(res);
-				continue;
+				continue; // After processing, quest may have changed state - will be picked up in next iteration
 			}
 
-			// If a quest is in state 'F' but the header says it's periodic, reactivate it
-			if (qu.state === 'F') {
+			// PRIORITY 2: Reactivate completed quests (C) with rewardDelivered=true
+			if (qu.state === 'C' && qu.rewardDelivered && qu.finished) {
 				try {
 					const header = await QuestsHeader.findByPk(qu.idQuest);
 					const period = header && header.period ? String(header.period).toUpperCase() : 'U';
+					
+					// Check if quest is still active in the system
+					if (!header.active) {
+						// Quest has been deactivated by admin → finalize to 'F'
+						qu.state = 'F';
+						qu.finished = true;
+						await qu.save();
+						logger.info('[QuestService] updateQuestStates - quest deactivated by admin, moved to F', {
+							questUserId: qu.id,
+							questId: qu.idQuest,
+							previousState: 'C'
+						});
+						continue;
+					}
+					
 					if (period !== 'U') {
-						// Only reactivate when the stored dateExpiration has arrived
+						// Periodic quest completed and rewarded - check if next cycle has arrived
 						if (qu.dateExpiration && new Date(qu.dateExpiration) <= now) {
-							const nextExp = computeNextExpiration(period, new Date());
-							// reset details to unchecked when reactivating
+							// Check if today is a valid day for this quest
+							const isTodayValid = periodUtils.shouldBeActiveOnDate(header, now);
+							
+							if (!isTodayValid) {
+								// Today is not valid, reschedule for next valid day
+								const nextExp = periodUtils.computeNextExpiration(header, now);
+								qu.dateExpiration = nextExp;
+								await qu.save();
+								logger.info('[QuestService] updateQuestStates - today not valid, rescheduled C quest for next valid day', {
+									questUserId: qu.id,
+									questId: qu.idQuest,
+									periodType: header.periodType,
+									nextExpiration: nextExp.toISOString()
+								});
+								continue;
+							}
+							
+							// Today is valid, reactivate the quest
+							const nextExp = periodUtils.computeNextExpiration(header, now);
+							// Reset details to unchecked when reactivating
 							try {
 								await QuestsUserDetail.update({ isChecked: false, dateUpdated: new Date() }, { where: { idUser: qu.idUser, idQuest: qu.idQuest } });
-								logger.info('[QuestService] updateQuestStates - reset details on reactivate', { questUserId: qu.id, questId: qu.idQuest });
+								logger.info('[QuestService] updateQuestStates - reset details on reactivate from C', { questUserId: qu.id, questId: qu.idQuest });
 							} catch (e) {
 								logger.warn('[QuestService] updateQuestStates - failed to reset details on reactivate', { questUserId: qu.id, questId: qu.idQuest, error: e && e.message ? e.message : e });
 							}
 							qu.state = 'L';
 							qu.finished = false;
+							qu.rewardDelivered = false;
 							qu.dateFinished = null;
 							qu.dateRead = new Date();
 							qu.dateExpiration = nextExp;
 							await qu.save();
+							logger.info('[QuestService] updateQuestStates - quest reactivated from C on valid day', {
+								questUserId: qu.id,
+								questId: qu.idQuest,
+								periodType: header.periodType,
+								active: header.active,
+								nextExpiration: nextExp.toISOString()
+							});
+							results.push({ idQuest: qu.idQuest, state: 'L', rescheduled: true, nextExpiration: nextExp });
+						}
+					}
+				} catch (e) {
+					logger.error('[QuestService] updateQuestStates - failed to reactivate periodic C quest', { questUserId: qu.id, error: e && e.message ? e.message : e });
+				}
+				continue;
+			}
+
+			// PRIORITY 3: Reactivate expired quests (E) with rewardDelivered=true
+			if (qu.state === 'E' && qu.rewardDelivered && qu.finished) {
+				try {
+					const header = await QuestsHeader.findByPk(qu.idQuest);
+					const period = header && header.period ? String(header.period).toUpperCase() : 'U';
+					
+					// Check if quest is still active in the system
+					if (!header.active) {
+						// Quest has been deactivated by admin → finalize to 'F'
+						qu.state = 'F';
+						qu.finished = true;
+						await qu.save();
+						logger.info('[QuestService] updateQuestStates - quest deactivated by admin, moved to F', {
+							questUserId: qu.id,
+							questId: qu.idQuest,
+							previousState: 'E'
+						});
+						continue;
+					}
+					
+					if (period !== 'U') {
+						// Periodic quest expired and penalized - check if next cycle has arrived
+						if (qu.dateExpiration && new Date(qu.dateExpiration) <= now) {
+							// Check if today is a valid day for this quest
+							const isTodayValid = periodUtils.shouldBeActiveOnDate(header, now);
+							
+							if (!isTodayValid) {
+								// Today is not valid, reschedule for next valid day
+								const nextExp = periodUtils.computeNextExpiration(header, now);
+								qu.dateExpiration = nextExp;
+								await qu.save();
+								logger.info('[QuestService] updateQuestStates - today not valid, rescheduled E quest for next valid day', {
+									questUserId: qu.id,
+									questId: qu.idQuest,
+									periodType: header.periodType,
+									nextExpiration: nextExp.toISOString()
+								});
+								continue;
+							}
+							
+							// Today is valid, reactivate the quest
+							const nextExp = periodUtils.computeNextExpiration(header, now);
+							// Reset details to unchecked when reactivating
+							try {
+								await QuestsUserDetail.update({ isChecked: false, dateUpdated: new Date() }, { where: { idUser: qu.idUser, idQuest: qu.idQuest } });
+								logger.info('[QuestService] updateQuestStates - reset details on reactivate from E', { questUserId: qu.id, questId: qu.idQuest });
+							} catch (e) {
+								logger.warn('[QuestService] updateQuestStates - failed to reset details on reactivate', { questUserId: qu.id, questId: qu.idQuest, error: e && e.message ? e.message : e });
+							}
+							qu.state = 'L';
+							qu.finished = false;
+							qu.rewardDelivered = false;
+							qu.dateFinished = null;
+							qu.dateRead = new Date();
+							qu.dateExpiration = nextExp;
+							await qu.save();
+							logger.info('[QuestService] updateQuestStates - quest reactivated from E on valid day', {
+								questUserId: qu.id,
+								questId: qu.idQuest,
+								periodType: header.periodType,
+								nextExpiration: nextExp.toISOString()
+							});
+							results.push({ idQuest: qu.idQuest, state: 'L', rescheduled: true, nextExpiration: nextExp });
+						}
+					}
+				} catch (e) {
+					logger.error('[QuestService] updateQuestStates - failed to reactivate periodic E quest', { questUserId: qu.id, error: e && e.message ? e.message : e });
+				}
+				continue;
+			}
+
+			// PRIORITY 4: Legacy support - reactivate quests in state 'F' (should not happen with new logic)
+			if (qu.state === 'F') {
+				try {
+					const header = await QuestsHeader.findByPk(qu.idQuest);
+					
+					// Check if quest is still active in the system
+					if (!header.active) {
+						// Quest has been deactivated by admin → remain in 'F' permanently
+						logger.info('[QuestService] updateQuestStates - F quest remains finalized (deactivated by admin)', {
+							questUserId: qu.id,
+							questId: qu.idQuest
+						});
+						continue;
+					}
+					
+					const period = header && header.period ? String(header.period).toUpperCase() : 'U';
+					if (period !== 'U') {
+						// Only reactivate when the stored dateExpiration has arrived AND today is a valid day
+						if (qu.dateExpiration && new Date(qu.dateExpiration) <= now) {
+							// Check if today is a valid day for this quest
+							const isTodayValid = periodUtils.shouldBeActiveOnDate(header, now);
+							
+							if (!isTodayValid) {
+								// Today is not valid, schedule for next valid day instead of reactivating
+								const nextExp = periodUtils.computeNextExpiration(header, now);
+								qu.dateExpiration = nextExp;
+								await qu.save();
+								logger.info('[QuestService] updateQuestStates - today not valid, rescheduled F quest for next valid day', {
+									questUserId: qu.id,
+									questId: qu.idQuest,
+									periodType: header.periodType,
+									nextExpiration: nextExp.toISOString()
+								});
+								continue;
+							}
+							
+							// Today is valid, reactivate the quest
+							const nextExp = periodUtils.computeNextExpiration(header, now);
+							// reset details to unchecked when reactivating
+							try {
+								await QuestsUserDetail.update({ isChecked: false, dateUpdated: new Date() }, { where: { idUser: qu.idUser, idQuest: qu.idQuest } });
+								logger.info('[QuestService] updateQuestStates - reset details on reactivate from F', { questUserId: qu.id, questId: qu.idQuest });
+							} catch (e) {
+								logger.warn('[QuestService] updateQuestStates - failed to reset details on reactivate', { questUserId: qu.id, questId: qu.idQuest, error: e && e.message ? e.message : e });
+							}
+							qu.state = 'L';
+							qu.finished = false;
+							qu.rewardDelivered = false;
+							qu.dateFinished = null;
+							qu.dateRead = new Date();
+							qu.dateExpiration = nextExp;
+							await qu.save();
+							logger.info('[QuestService] updateQuestStates - quest reactivated from F on valid day', {
+								questUserId: qu.id,
+								questId: qu.idQuest,
+								periodType: header.periodType,
+								nextExpiration: nextExp.toISOString()
+							});
 							results.push({ idQuest: qu.idQuest, state: 'L', rescheduled: true, nextExpiration: nextExp });
 						}
 					}
@@ -353,8 +521,9 @@ async function updateQuestStates(userId) {
 				continue;
 			}
 
+			// PRIORITY 5: Check live quests (L) for expiration or completion
 			if (qu.state === 'L') {
-				// check expiration
+				// Check expiration first
 				if (qu.dateExpiration && new Date(qu.dateExpiration) < now) {
 					qu.state = 'E';
 					await qu.save();
@@ -363,7 +532,7 @@ async function updateQuestStates(userId) {
 					continue;
 				}
 
-				// check if completed by verifying all details checked
+				// Check if completed by verifying all details checked
 				const details = await QuestsUserDetail.findAll({ where: { idUser: userId, idQuest: qu.idQuest } });
 				const allChecked = details.length > 0 && details.every(d => d.isChecked === true);
 				if (allChecked) {
@@ -563,7 +732,8 @@ async function getUserQuests(userId) {
 
 // Activate a quest for a user
 // - Verifies the QuestsUser exists and is in state 'N'
-// - Sets state -> 'L', dateRead = now, dateExpiration = now + duration (minutes)
+// - Sets state -> 'L', dateRead = now, dateExpiration calculated based on periodicity
+// - All quests expire at 03:00 of the next valid day (no personalized duration margin)
 // - Returns the formatted quest object (same shape as getUserQuests returns for each quest)
 async function activateQuest(userId, questUserId) {
 	logger.info('[QuestService] activateQuest start', { userId, questUserId });
@@ -581,16 +751,34 @@ async function activateQuest(userId, questUserId) {
 		throw err;
 	}
 
-	// fetch header to read duration and possibly period
+	// fetch header to calculate proper expiration based on periodicity
 	const header = await QuestsHeader.findByPk(qu.idQuest);
 	const now = new Date();
 	let dateExpiration = null;
+	
 	try {
-		const duration = header && typeof header.duration !== 'undefined' ? Number(header.duration) : 0;
-		// duration is interpreted in minutes
-		dateExpiration = duration > 0 ? new Date(now.getTime() + duration * 60000) : null;
+		// Use new utility to calculate first activation expiration
+		// All quests expire at 03:00 of the next valid day according to their periodicity
+		dateExpiration = periodUtils.computeFirstActivationExpiration(header, now);
+		logger.info('[QuestService] activateQuest - calculated expiration', {
+			userId,
+			questUserId,
+			periodType: header.periodType,
+			activationDate: now.toISOString(),
+			expirationDate: dateExpiration.toISOString(),
+			isValidToday: periodUtils.shouldBeActiveOnDate(header, now)
+		});
 	} catch (e) {
-		dateExpiration = null;
+		logger.error('[QuestService] activateQuest - error calculating expiration, using fallback to next 03:00', {
+			error: e.message,
+			questUserId
+		});
+		// Fallback: expire at next 03:00
+		dateExpiration = new Date(now);
+		dateExpiration.setHours(3, 0, 0, 0);
+		if (now >= dateExpiration) {
+			dateExpiration.setDate(dateExpiration.getDate() + 1);
+		}
 	}
 
 	qu.state = 'L';

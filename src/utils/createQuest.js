@@ -33,6 +33,11 @@ async function createQuest(payload = {}, externalTransaction = null) {
       description: String(description),
       welcomeMessage: typeof headerPayload.welcomeMessage !== 'undefined' ? headerPayload.welcomeMessage : null,
       period: headerPayload.period || 'D',
+      // Nuevos campos de periodicidad personalizada
+      periodType: headerPayload.periodType || 'FIXED',
+      activeDays: typeof headerPayload.activeDays !== 'undefined' ? headerPayload.activeDays : null,
+      periodPattern: typeof headerPayload.periodPattern !== 'undefined' ? headerPayload.periodPattern : null,
+      patternStartDate: typeof headerPayload.patternStartDate !== 'undefined' ? headerPayload.patternStartDate : null,
       duration: typeof headerPayload.duration !== 'undefined' ? headerPayload.duration : 1440,
       active: typeof headerPayload.active !== 'undefined' ? !!headerPayload.active : true,
       levelRequired: typeof headerPayload.levelRequired !== 'undefined' ? headerPayload.levelRequired : 1,
@@ -101,7 +106,8 @@ async function createQuest(payload = {}, externalTransaction = null) {
       include: [
         { model: db.QuestsDetail },
         { model: db.QuestsObject, include: [ db.ObjectItem ] }
-      ]
+      ],
+      transaction: t
     });
 
     return headerWithRelations;

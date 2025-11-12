@@ -25,6 +25,27 @@ module.exports = (sequelize) => {
       allowNull: false,
       defaultValue: 'D'
     },
+    periodType: {
+      type: DataTypes.STRING(10),
+      allowNull: false,
+      defaultValue: 'FIXED',
+      comment: 'Tipo de periodicidad: FIXED (D/W/M), WEEKDAYS (días específicos), PATTERN (patrón cíclico)'
+    },
+    activeDays: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+      comment: 'Días activos separados por coma (0=Dom, 1=Lun, 2=Mar, 3=Mié, 4=Jue, 5=Vie, 6=Sáb). Ej: "1,3,5" para L-M-V'
+    },
+    periodPattern: {
+      type: DataTypes.STRING(200),
+      allowNull: true,
+      comment: 'Patrón cíclico donde 1=día activo, 0=descanso. Ej: "1,1,0" = 2 días on, 1 off'
+    },
+    patternStartDate: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: 'Fecha de inicio del patrón para calcular días del ciclo'
+    },
     duration: {
       type: DataTypes.INTEGER,
       allowNull: false,
