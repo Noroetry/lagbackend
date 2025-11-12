@@ -3,8 +3,11 @@ const QuestsUser = db.QuestsUser;
 const QuestsObject = db.QuestsObject;
 const ObjectItem = db.ObjectItem;
 const User = db.User;
+const UsersLevel = db.UsersLevel;
 const Sequelize = db.Sequelize;
+const { Op } = require('sequelize');
 const logger = require('../utils/logger');
+const autoMessageService = require('./autoMessageService');
 
 /**
  * Ensure there is an ObjectItem of type 'experience'. If missing, create it.
@@ -117,12 +120,94 @@ async function processQuestRewards(questUser, transaction = null) {
     await qu.save({ transaction: t });
     logger.info('[RewardService] processQuestRewards - marked rewardDelivered', { questUserId: qu.id });
 
+    // Check for level up after applying rewards
+    if (applied.length > 0) {
+      const expReward = applied.find(a => a.type === 'experience');
+      if (expReward && expReward.signedDelta > 0) {
+        // User gained experience, check if they leveled up
+        try {
+          await checkAndNotifyLevelUp(user.id, t);
+        } catch (err) {
+          logger.warn('[RewardService] Error checking level up', { error: err.message });
+        }
+      }
+    }
+
+    // Send reward result message to user
+    if (applied.length > 0) {
+      try {
+        // Build reward description
+        const rewardParts = applied.map(reward => {
+          if (reward.type === 'experience') {
+            const sign = reward.signedDelta > 0 ? '+' : '';
+            return `${sign}${reward.signedDelta} EXP`;
+          }
+          return `${reward.type}: ${reward.quantity}`;
+        });
+        const rewardDescription = rewardParts.join(', ');
+        
+        // Send message (outside transaction to avoid blocking)
+        setImmediate(async () => {
+          try {
+            await autoMessageService.sendRewardResultMessage(qu.idUser, rewardDescription);
+          } catch (err) {
+            logger.warn('[RewardService] Failed to send reward message', { error: err.message });
+          }
+        });
+      } catch (err) {
+        logger.warn('[RewardService] Error preparing reward message', { error: err.message });
+      }
+    }
+
     if (!externalTx) await t.commit();
     return { questUser: qu, applied };
   } catch (e) {
     try { if (!externalTx) await t.rollback(); } catch (er) { logger.error('[RewardService] processQuestRewards rollback failed', { error: er && er.message ? er.message : er }); }
     logger.error('[RewardService] processQuestRewards - error', { error: e && e.message ? e.message : e });
     throw e;
+  }
+}
+
+/**
+ * Check if user leveled up and send notification message
+ */
+async function checkAndNotifyLevelUp(userId, transaction) {
+  // Fetch updated user with current totalExp
+  const user = await User.findByPk(userId, { 
+    attributes: ['id', 'totalExp'],
+    transaction 
+  });
+  
+  if (!user) return;
+
+  // Find current level based on totalExp
+  const currentLevel = await UsersLevel.findOne({
+    where: {
+      minExpRequired: {
+        [Op.lte]: user.totalExp
+      }
+    },
+    order: [['minExpRequired', 'DESC']],
+    transaction
+  });
+
+  if (!currentLevel) return;
+
+  // Check if this is a new level (user's level field might be outdated)
+  const userBefore = await User.findByPk(userId, { 
+    attributes: ['level'],
+    transaction 
+  });
+
+  if (userBefore && userBefore.level !== currentLevel.level) {
+    // Level changed! Send notification
+    setImmediate(async () => {
+      try {
+        await autoMessageService.sendLevelUpMessage(userId, currentLevel.level);
+      } catch (err) {
+        logger.warn('[RewardService] Failed to send level up message', { error: err.message });
+      }
+    });
   }
 }
 

@@ -3,6 +3,7 @@ const { Op } = require('sequelize');
 const User = db.User;
 const Message = db.Message;
 const UsersLevel = db.UsersLevel;
+const autoMessageService = require('./autoMessageService');
 
 const jwt = require('jsonwebtoken');
 

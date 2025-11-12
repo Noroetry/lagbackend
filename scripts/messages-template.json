@@ -1,0 +1,22 @@
+[
+  {
+    "title": "Ejemplo de mensaje informativo",
+    "description": "Este es un mensaje de tipo informativo. Puedes usar este formato para notificar al usuario sobre actualizaciones, consejos o información general del sistema.",
+    "type": "info"
+  },
+  {
+    "title": "Ejemplo de mensaje de recompensa",
+    "description": "Este es un mensaje de tipo recompensa. Úsalo cuando quieras notificar al usuario que ha recibido una recompensa, ha completado algo importante o ha logrado un hito.",
+    "type": "reward"
+  },
+  {
+    "title": "Consejo del día",
+    "description": "Divide las tareas grandes en objetivos más pequeños. Los pequeños pasos constantes llevan a grandes resultados.",
+    "type": "info"
+  },
+  {
+    "title": "Nueva funcionalidad",
+    "description": "Hemos añadido un nuevo sistema de mensajes que te mantendrá informado sobre tu progreso, actualizaciones y recompensas. ¡Revisa tu bandeja regularmente!",
+    "type": "info"
+  }
+]

@@ -1,4 +1,5 @@
 const userService = require('../services/userService');
+const autoMessageService = require('../services/autoMessageService');
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
 
@@ -146,6 +147,16 @@ async function createUser(req, res) {
         
     logger.debug('[UserController] Usuario creado; intentando obtener tokens (si no fueron devueltos por el servicio)');
         let { user, accessToken, refreshToken } = result;
+        
+        // Send welcome message to new user
+        try {
+            await autoMessageService.sendWelcomeMessage(user.id);
+            logger.debug('[UserController] Mensaje de bienvenida enviado al nuevo usuario');
+        } catch (err) {
+            logger.warn('[UserController] Error enviando mensaje de bienvenida:', err.message);
+            // No fallar el registro si falla el mensaje
+        }
+        
         // Si por alguna razón el servicio de creación no devolvió tokens, intentamos login inmediato
         if (!accessToken || !refreshToken) {
             try {

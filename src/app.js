@@ -4,6 +4,7 @@ const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const userRoutes = require('./routes/userRoutes');
 const questRoutes = require('./routes/questRoutes');
+const messageRoutes = require('./routes/messageRoutes');
 const logger = require('./utils/logger');
 
 // Configure CORS to allow credentials (cookies) from frontend origin
@@ -28,6 +29,7 @@ app.get('/api/ping', (req, res) => {
 
 app.use('/api/users', userRoutes);
 app.use('/api/quests', questRoutes);
+app.use('/api/messages', messageRoutes);
 
 app.use((req, res, next) => {
   res.status(404).json({ message: 'Ruta no encontrada' });
