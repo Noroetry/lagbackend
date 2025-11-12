@@ -78,10 +78,23 @@ function computeFirstActivationExpiration(questHeader, activationDate = null) {
     return computeNextExpiration(questHeader, now);
   }
 
-  // Si hoy SÍ es válido, expira a las 03:00 del siguiente día válido según el patrón
-  // (NO da margen de duration personalizado desde dateRead)
+  if (periodType === 'WEEKDAYS') {
+    const expiration = new Date(now);
+    const boundary = new Date(now);
+    boundary.setHours(3, 0, 0, 0);
+
+    if (now < boundary) {
+      expiration.setHours(3, 0, 0, 0);
+      return expiration;
+    }
+
+    expiration.setDate(expiration.getDate() + 1);
+    expiration.setHours(3, 0, 0, 0);
+    return expiration;
+  }
+
+  // Si hoy SÍ es válido para PATTERN, expira según el siguiente día válido del patrón
   const nextExpiration = computeNextExpiration(questHeader, now);
-  
   return nextExpiration;
 }
 
