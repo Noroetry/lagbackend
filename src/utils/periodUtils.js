@@ -41,7 +41,6 @@ function computeNextExpiration(questHeader, fromDate = null) {
       );
     
     default:
-      logger.warn('[PeriodUtils] Unknown periodType, defaulting to daily', { periodType });
       return computeFixedPeriod('D', target);
   }
 }
@@ -68,11 +67,6 @@ function computeFirstActivationExpiration(questHeader, activationDate = null) {
   // Para FIXED: usar computeNextExpiration (comportamiento estándar a las 03:00)
   if (periodType === 'FIXED') {
     const expiration = computeNextExpiration(questHeader, now);
-    logger.debug('[PeriodUtils] First activation (FIXED) expiration', {
-      periodType,
-      activationDate: now.toISOString(),
-      expirationDate: expiration.toISOString()
-    });
     return expiration;
   }
 
@@ -81,23 +75,12 @@ function computeFirstActivationExpiration(questHeader, activationDate = null) {
 
   if (!isTodayValid) {
     // Si hoy NO es válido, programar directamente para el próximo día válido a las 03:00
-    logger.info('[PeriodUtils] Today is not a valid day for this quest, scheduling for next valid day', {
-      periodType,
-      activationDate: now.toISOString()
-    });
     return computeNextExpiration(questHeader, now);
   }
 
   // Si hoy SÍ es válido, expira a las 03:00 del siguiente día válido según el patrón
   // (NO da margen de duration personalizado desde dateRead)
   const nextExpiration = computeNextExpiration(questHeader, now);
-  
-  logger.debug('[PeriodUtils] First activation expiration calculated for valid day', {
-    periodType,
-    isTodayValid,
-    activationDate: now.toISOString(),
-    expirationDate: nextExpiration.toISOString()
-  });
   
   return nextExpiration;
 }
@@ -166,14 +149,12 @@ function computeFixedPeriod(period, fromDate) {
  */
 function computeWeekdaysPeriod(activeDays, fromDate) {
   if (!activeDays) {
-    logger.warn('[PeriodUtils] activeDays not configured, defaulting to daily');
     return computeFixedPeriod('D', fromDate);
   }
 
   const days = activeDays.split(',').map(d => parseInt(d.trim(), 10)).filter(d => !isNaN(d) && d >= 0 && d <= 6);
   
   if (days.length === 0) {
-    logger.warn('[PeriodUtils] No valid days in activeDays, defaulting to daily', { activeDays });
     return computeFixedPeriod('D', fromDate);
   }
 
@@ -223,14 +204,12 @@ function isActiveWeekday(activeDays, date) {
  */
 function computePatternPeriod(periodPattern, patternStartDate, fromDate) {
   if (!periodPattern || !patternStartDate) {
-    logger.warn('[PeriodUtils] Pattern or startDate not configured, defaulting to daily');
     return computeFixedPeriod('D', fromDate);
   }
 
   const pattern = periodPattern.split(',').map(p => parseInt(p.trim(), 10)).filter(p => p === 0 || p === 1);
   
   if (pattern.length === 0) {
-    logger.warn('[PeriodUtils] Invalid pattern, defaulting to daily', { periodPattern });
     return computeFixedPeriod('D', fromDate);
   }
 

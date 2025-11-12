@@ -73,7 +73,7 @@ async function markMessageAsRead(messageUserId, userId) {
     messageUser.dateRead = new Date();
     await messageUser.save();
 
-    logger.info('[MessageService] markMessageAsRead - success', { messageUserId, userId });
+    logger.info(`Usuario lee mensaje ID ${messageUserId}`);
 
     return { success: true, alreadyRead: false };
   } catch (error) {

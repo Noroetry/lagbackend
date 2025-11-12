@@ -23,7 +23,6 @@ async function sendWelcomeMessage(userId) {
       id_user: userId
     });
 
-    logger.info('[AutoMessageService] sendWelcomeMessage - success', { userId, messageId: message.id });
     return message;
   } catch (error) {
     logger.error('[AutoMessageService] sendWelcomeMessage - error', { userId, error: error.message });
@@ -52,11 +51,6 @@ async function sendRewardResultMessage(userId, rewardDescription) {
       id_user: userId
     });
 
-    logger.info('[AutoMessageService] sendRewardResultMessage - success', { 
-      userId, 
-      messageId: message.id,
-      reward: rewardDescription
-    });
     return message;
   } catch (error) {
     logger.error('[AutoMessageService] sendRewardResultMessage - error', { 
@@ -88,11 +82,6 @@ async function sendLevelUpMessage(userId, newLevel) {
       id_user: userId
     });
 
-    logger.info('[AutoMessageService] sendLevelUpMessage - success', { 
-      userId, 
-      messageId: message.id,
-      newLevel
-    });
     return message;
   } catch (error) {
     logger.error('[AutoMessageService] sendLevelUpMessage - error', { 

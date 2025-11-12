@@ -19,14 +19,12 @@ async function checkObjectExperience(transaction = null) {
   const obj = await ObjectItem.findOne({ where, transaction });
   if (obj) return obj;
 
-  // Create a default experience object
   const created = await ObjectItem.create({
     objectName: 'Experiencia',
     description: 'Experiencia',
     type: 'experience',
     shortName: 'EXP'
   }, transaction ? { transaction } : {});
-  logger.info('[RewardService] checkObjectExperience - created default experience object', { id: created.id });
   return created;
 }
 
@@ -45,37 +43,27 @@ async function checkObjectExperience(transaction = null) {
 async function processQuestRewards(questUser, transaction = null) {
   if (!questUser) throw new Error('questUser is required');
 
-  // If caller didn't provide a transaction, create one so operations are atomic.
   const externalTx = !!transaction;
   const t = transaction || await db.sequelize.transaction({ isolationLevel: Sequelize.Transaction.ISOLATION_LEVELS.SERIALIZABLE });
   try {
-    // Reload questUser inside the transaction with lock to ensure we have the latest state
     const qu = await QuestsUser.findOne({ where: { id: questUser.id }, transaction: t, lock: t.LOCK.UPDATE });
     if (!qu) throw new Error('QuestsUser not found');
 
     if (qu.rewardDelivered) {
-      logger.warn('[RewardService] processQuestRewards - already delivered, skipping', { questUserId: qu.id });
       if (!externalTx) await t.commit();
       return qu;
     }
 
-    // Decide which quest object types to process depending on quest state
     let wantedType = null;
     if (qu.state === 'C') wantedType = 'R';
     else if (qu.state === 'E') wantedType = 'P';
     else {
-      logger.warn('[RewardService] processQuestRewards - unexpected quest state, skipping', { questUserId: qu.id, state: qu.state });
       if (!externalTx) await t.commit();
       return qu;
     }
 
-    // Fetch quest objects for this quest filtered by type
     const qObjects = await QuestsObject.findAll({ where: { idQuest: qu.idQuest, type: wantedType }, transaction: t });
-
-    // Ensure experience object exists (used below)
     const expObject = await checkObjectExperience(t);
-
-    // Load the user and lock the row for update
     const user = await User.findByPk(qu.idUser, { transaction: t, lock: t.LOCK.UPDATE });
     if (!user) throw new Error('User not found');
 
@@ -83,7 +71,6 @@ async function processQuestRewards(questUser, transaction = null) {
     for (const qo of qObjects) {
       const item = await ObjectItem.findByPk(qo.idObject, { transaction: t });
       if (!item) {
-        logger.warn('[RewardService] processQuestRewards - object item not found, skipping', { idObject: qo.idObject });
         continue;
       }
 
@@ -91,52 +78,44 @@ async function processQuestRewards(questUser, transaction = null) {
       const quantity = Number(qo.quantity) || 0;
 
       if (itemType === 'experience' || itemType === 'experiencie') {
-        // Rewards add exp; Penalties subtract exp. Never go below 0 totalExp.
         const absQty = Math.round(Math.abs(quantity));
         const delta = (wantedType === 'P') ? -absQty : absQty;
 
-        // Apply clamp in DB using GREATEST to avoid negative totals and keep bigint safety
         try {
           await db.sequelize.query(
             'UPDATE "users" SET "totalExp" = GREATEST(0, "totalExp" + :delta) WHERE "id" = :id',
             { transaction: t, replacements: { delta, id: user.id }, type: Sequelize.QueryTypes.UPDATE }
           );
         } catch (e) {
-          logger.error('[RewardService] processQuestRewards - failed to apply exp delta', { userId: user.id, delta, error: e && e.message ? e.message : e });
+          logger.error('[RewardService] Error aplicando experiencia', { error: e && e.message ? e.message : e });
           throw e;
         }
 
         applied.push({ type: 'experience', quantity: absQty, signedDelta: delta, idObject: item.id, appliedAs: wantedType });
-        logger.info('[RewardService] processQuestRewards - applied experience delta', { userId: user.id, delta, appliedAs: wantedType });
+        
+        const action = wantedType === 'R' ? 'gana' : 'pierde';
+        logger.info(`Usuario ${action} ${Math.abs(delta)} EXP`);
       } else {
-        // For now, unhandled item types are logged and ignored; future implementations go here.
         applied.push({ type: item.type, quantity, idObject: item.id, appliedAs: wantedType, note: 'unhandled-type' });
-        logger.info('[RewardService] processQuestRewards - unhandled object type', { userId: user.id, itemType: item.type });
       }
     }
 
-    // Mark as delivered
     qu.rewardDelivered = true;
     await qu.save({ transaction: t });
-    logger.info('[RewardService] processQuestRewards - marked rewardDelivered', { questUserId: qu.id });
 
-    // Check for level up after applying rewards
     if (applied.length > 0) {
       const expReward = applied.find(a => a.type === 'experience');
       if (expReward && expReward.signedDelta > 0) {
-        // User gained experience, check if they leveled up
         try {
           await checkAndNotifyLevelUp(user.id, t);
         } catch (err) {
-          logger.warn('[RewardService] Error checking level up', { error: err.message });
+          // Silently fail level check
         }
       }
     }
 
-    // Send reward result message to user
     if (applied.length > 0) {
       try {
-        // Build reward description
         const rewardParts = applied.map(reward => {
           if (reward.type === 'experience') {
             const sign = reward.signedDelta > 0 ? '+' : '';
@@ -146,24 +125,23 @@ async function processQuestRewards(questUser, transaction = null) {
         });
         const rewardDescription = rewardParts.join(', ');
         
-        // Send message (outside transaction to avoid blocking)
         setImmediate(async () => {
           try {
             await autoMessageService.sendRewardResultMessage(qu.idUser, rewardDescription);
           } catch (err) {
-            logger.warn('[RewardService] Failed to send reward message', { error: err.message });
+            // Silently fail message sending
           }
         });
       } catch (err) {
-        logger.warn('[RewardService] Error preparing reward message', { error: err.message });
+        // Silently fail message preparation
       }
     }
 
     if (!externalTx) await t.commit();
     return { questUser: qu, applied };
   } catch (e) {
-    try { if (!externalTx) await t.rollback(); } catch (er) { logger.error('[RewardService] processQuestRewards rollback failed', { error: er && er.message ? er.message : er }); }
-    logger.error('[RewardService] processQuestRewards - error', { error: e && e.message ? e.message : e });
+    try { if (!externalTx) await t.rollback(); } catch (er) { logger.error('[RewardService] Rollback failed', { error: er && er.message ? er.message : er }); }
+    logger.error('[RewardService] Error procesando recompensas', { error: e && e.message ? e.message : e });
     throw e;
   }
 }
@@ -193,19 +171,19 @@ async function checkAndNotifyLevelUp(userId, transaction) {
 
   if (!currentLevel) return;
 
-  // Check if this is a new level (user's level field might be outdated)
   const userBefore = await User.findByPk(userId, { 
     attributes: ['level'],
     transaction 
   });
 
-  if (userBefore && userBefore.level !== currentLevel.level) {
-    // Level changed! Send notification
+  if (userBefore && userBefore.level !== currentLevel.levelNumber) {
+    logger.info(`Usuario sube al nivel ${currentLevel.levelNumber}`);
+    
     setImmediate(async () => {
       try {
-        await autoMessageService.sendLevelUpMessage(userId, currentLevel.level);
+        await autoMessageService.sendLevelUpMessage(userId, currentLevel.levelNumber);
       } catch (err) {
-        logger.warn('[RewardService] Failed to send level up message', { error: err.message });
+        // Silently fail message sending
       }
     });
   }

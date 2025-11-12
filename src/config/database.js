@@ -32,7 +32,7 @@ const urlOptions = {
     }
   },
   pool: defaultPool,
-  logging: process.env.NODE_ENV === 'development',
+  logging: false,
   // Forzar comportamiento consistente: timestamps true y camelCase (underscored: false)
   define: {
     timestamps: true,
@@ -45,7 +45,7 @@ const credsOptions = {
   host: process.env.DB_HOST,
   port: process.env.DB_PORT ? parseInt(process.env.DB_PORT, 10) : 5432,
   dialect: process.env.DB_DIALECT || 'postgres',
-  logging: process.env.NODE_ENV === 'development',
+  logging: false,
   // Usar timestamps con camelCase (createdAt/updatedAt) por defecto
   define: {
     timestamps: true,

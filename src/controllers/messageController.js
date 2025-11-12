@@ -9,16 +9,10 @@ async function loadMessages(req, res) {
     const userId = req.body && req.body.userId ? req.body.userId : null;
     
     if (!userId) {
-      logger.warn('[MessageController] loadMessages called without userId', { body: req.body });
       return res.status(400).json({ error: 'userId is required' });
     }
 
     const messages = await messageService.loadMessagesForUser(userId);
-
-    logger.info('[MessageController] loadMessages finished', { 
-      userId, 
-      messagesCount: messages.length
-    });
 
     return res.status(200).json({ messages });
   } catch (err) {
@@ -38,11 +32,8 @@ async function markAsRead(req, res) {
     const messageUserId = req.body && req.body.messageUserId ? req.body.messageUserId : null;
 
     if (!userId || !messageUserId) {
-      logger.warn('[MessageController] markAsRead called without required params', { body: req.body });
       return res.status(400).json({ error: 'userId and messageUserId are required' });
     }
-
-    logger.info('[MessageController] markAsRead called', { userId, messageUserId });
 
     const result = await messageService.markMessageAsRead(messageUserId, userId);
 
