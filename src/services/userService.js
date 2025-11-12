@@ -75,25 +75,7 @@ async function login(usernameOrEmail, password) {
     const userWithoutPassword = user.toJSON();
     delete userWithoutPassword.password;
 
-    // Cargar mensajes relacionados (source o destination igual al username)
-    try {
-        if (Message) {
-            const messages = await Message.findAll({
-                where: {
-                    [Op.or]: [
-                        { source: user.username },
-                        { destination: user.username }
-                    ]
-                },
-                order: [['dateSent', 'DESC']]
-            });
-            userWithoutPassword.messages = messages.map(m => (m.toJSON ? m.toJSON() : m));
-        } else {
-            userWithoutPassword.messages = [];
-        }
-    } catch (err) {
-        userWithoutPassword.messages = [];
-    }
+    userWithoutPassword.messages = [];
 
     // generate token pair and persist refresh token on user record
     try {
@@ -131,23 +113,7 @@ async function createUser(userData) {
 
         userWithoutPassword.messages = [];
 
-        // Crear un mensaje de bienvenida
-        try {
-            if (Message) {
-                const welcome = await Message.create({
-                    title: 'Bienvenido a LifeAsGame',
-                    description: `¡Hola ${userWithoutPassword.username}! Bienvenido a LifeAsGame. Gracias por unirte. Explora el juego y diviértete.`,
-                    source: 'system',
-                    destination: userWithoutPassword.username,
-                    adjunts: null,
-                    read: 'N',
-                    state: 'A'
-                });
-                userWithoutPassword.messages.push(welcome.toJSON ? welcome.toJSON() : welcome);
-            }
-        } catch (err) {
-            // Silently fail welcome message
-        }
+
 
         // generate tokens and persist refreshToken
         try {

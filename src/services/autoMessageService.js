@@ -3,28 +3,46 @@ const Message = db.Message;
 const MessageUser = db.MessageUser;
 const logger = require('../utils/logger');
 
+const WELCOME_TEMPLATE = {
+  code: 'system_welcome',
+  title: 'Bienvenido al Sistema',
+  description: 'Tu camino empieza ahora, no mires hacia delante, ni hacia atrás, céntrate en el ahora.',
+  type: 'info',
+  active: true
+};
+
+async function ensureWelcomeTemplate(transaction) {
+  const [message] = await Message.findOrCreate({
+    where: { code: WELCOME_TEMPLATE.code },
+    defaults: WELCOME_TEMPLATE,
+    transaction
+  });
+  return message;
+}
+
 /**
  * Create and send welcome message to a new user
  * @param {number} userId - The new user's ID
  */
 async function sendWelcomeMessage(userId) {
+  const transaction = await db.sequelize.transaction();
   try {
-    // Create welcome message
-    const message = await Message.create({
-      title: 'Bienvenido al Sistema',
-      description: 'Tu camino empieza ahora, no mires hacia delante, ni hacia atrás, céntrate en el ahora.',
-      type: 'info',
-      active: true
+    const message = await ensureWelcomeTemplate(transaction);
+
+    await MessageUser.findOrCreate({
+      where: { id_message: message.id, id_user: userId },
+      defaults: { id_message: message.id, id_user: userId },
+      transaction
     });
 
-    // Send to user
-    await MessageUser.create({
-      id_message: message.id,
-      id_user: userId
-    });
-
+    await transaction.commit();
     return message;
   } catch (error) {
+    try {
+      await transaction.rollback();
+    } catch (rollbackError) {
+      logger.error('[AutoMessageService] sendWelcomeMessage - rollback error', { userId, error: rollbackError.message });
+    }
     logger.error('[AutoMessageService] sendWelcomeMessage - error', { userId, error: error.message });
     throw error;
   }

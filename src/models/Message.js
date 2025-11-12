@@ -15,6 +15,11 @@ module.exports = (sequelize) => {
             type: DataTypes.TEXT,
             allowNull: false,
         },
+        code: {
+            type: DataTypes.STRING,
+            allowNull: true,
+            unique: true,
+        },
         type: {
             type: DataTypes.STRING,
             allowNull: false,
