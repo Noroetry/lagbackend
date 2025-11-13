@@ -2,6 +2,7 @@
 const app = require('./src/app'); 
 const db = require('./src/config/database');
 const logger = require('./src/utils/logger');
+const ensureSystemObjects = require('./scripts/seed-objects');
 
 const PORT = process.env.PORT || 3000; 
 
@@ -19,6 +20,14 @@ const startServer = async () => {
       logger.error('Error aplicando migraciones:', mErr && mErr.message ? mErr.message : mErr);
       // No continuar si las migraciones fallan: es mejor abortar que arrancar en un estado inconsistente
       process.exit(1);
+    }
+
+    // Ensure system objects exist after migrations
+    try {
+      await ensureSystemObjects();
+    } catch (seedErr) {
+      logger.error('Error al crear objetos del sistema:', seedErr && seedErr.message ? seedErr.message : seedErr);
+      // This is not critical, so we can continue
     }
 
     app.listen(PORT, () => {

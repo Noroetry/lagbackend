@@ -5,11 +5,17 @@ try {
   // dotenv no está instalado en este entorno (por ejemplo, producción donde no se incluyeron devDeps)
 }
 
-const hasDatabaseUrl = !!process.env.DATABASE_URL;
+// Determinar qué DATABASE_URL usar según el entorno
+const isProduction = process.env.NODE_ENV === 'production';
+const databaseUrl = isProduction 
+  ? (process.env.DATABASE_URL_PRODUCTION || process.env.DATABASE_URL)
+  : process.env.DATABASE_URL;
+
+const hasDatabaseUrl = !!databaseUrl;
 
 // Build a config object that works for all environments
 const envConfigFromUrl = {
-  use_env_variable: 'DATABASE_URL',
+  use_env_variable: isProduction ? 'DATABASE_URL_PRODUCTION' : 'DATABASE_URL',
   dialect: process.env.DB_DIALECT || 'postgres',
   dialectOptions: (process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false')
     ? { ssl: { rejectUnauthorized: true } }

@@ -1,0 +1,20 @@
+[
+  {
+    "objectName": "Misión",
+    "shortName": "Misión",
+    "description": "Misiones transferidas como objetos de recompensa/castigo",
+    "type": "quest"
+  },
+  {
+    "objectName": "Moneda",
+    "shortName": "c",
+    "description": "Moneda representativa",
+    "type": "coin"
+  },
+  {
+    "objectName": "Experiencia",
+    "shortName": "EXP",
+    "description": "Experiencia obtenida en misiones o eventos",
+    "type": "experience"
+  }
+]

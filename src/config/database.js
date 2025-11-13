@@ -55,9 +55,16 @@ const credsOptions = {
 };
 
 let sequelize;
-if (process.env.DATABASE_URL) {
+
+// Determinar qué DATABASE_URL usar según el entorno
+const databaseUrl = process.env.NODE_ENV === 'production' 
+  ? (process.env.DATABASE_URL_PRODUCTION || process.env.DATABASE_URL)
+  : process.env.DATABASE_URL;
+
+if (databaseUrl) {
   // Si existe DATABASE_URL, úsala (tanto en local como en producción). Ideal para Neon.
-  sequelize = new Sequelize(process.env.DATABASE_URL, urlOptions);
+  sequelize = new Sequelize(databaseUrl, urlOptions);
+  console.log(`[Database] Conectando a la base de datos (${process.env.NODE_ENV || 'development'})`);
 } else if (process.env.NODE_ENV === 'production') {
   // En producción sin DATABASE_URL, cae hacia un objeto de configuración que requiera env vars
   sequelize = new Sequelize(process.env.DB_NAME, process.env.DB_USER, process.env.DB_PASSWORD, urlOptions);
