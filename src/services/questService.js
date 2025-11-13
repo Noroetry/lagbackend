@@ -130,7 +130,20 @@ async function assignQuestToUser(userId) {
 	});
 
 	const created = [];
+	const now = new Date();
+	
 	for (const q of candidates) {
+		// Para misiones con periodicidad personalizada (WEEKDAYS/PATTERN), verificar si hoy es día válido
+		const periodType = (q.periodType || 'FIXED').toUpperCase();
+		if (periodType === 'WEEKDAYS' || periodType === 'PATTERN') {
+			const isTodayValid = periodUtils.shouldBeActiveOnDate(q, now);
+			if (!isTodayValid) {
+				// Si hoy NO es un día válido, no asignar la misión todavía
+				logger.debug(`Misión "${q.title}" no asignada - hoy no es día válido (periodType: ${periodType})`);
+				continue;
+			}
+		}
+		
 		let attempt = 0;
 		const maxAttempts = 3;
 		while (attempt < maxAttempts) {

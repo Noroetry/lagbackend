@@ -73,24 +73,34 @@ function computeFirstActivationExpiration(questHeader, activationDate = null) {
   // Para WEEKDAYS y PATTERN: verificar si hoy es día válido
   const isTodayValid = shouldBeActiveOnDate(questHeader, now);
 
-  if (!isTodayValid) {
-    // Si hoy NO es válido, programar directamente para el próximo día válido a las 03:00
-    return computeNextExpiration(questHeader, now);
-  }
-
   if (periodType === 'WEEKDAYS') {
-    const expiration = new Date(now);
     const boundary = new Date(now);
     boundary.setHours(3, 0, 0, 0);
 
+    if (!isTodayValid) {
+      // Si hoy NO es válido, programar para el próximo día válido a las 03:00
+      return computeNextExpiration(questHeader, now);
+    }
+
+    // Si hoy SÍ es válido
     if (now < boundary) {
+      // Si aún no son las 03:00, la misión se activa hoy hasta mañana a las 03:00
+      const expiration = new Date(now);
+      expiration.setDate(expiration.getDate() + 1);
       expiration.setHours(3, 0, 0, 0);
       return expiration;
     }
 
+    // Si ya pasaron las 03:00, la misión caduca mañana a las 03:00
+    const expiration = new Date(now);
     expiration.setDate(expiration.getDate() + 1);
     expiration.setHours(3, 0, 0, 0);
     return expiration;
+  }
+
+  if (!isTodayValid) {
+    // Para PATTERN: Si hoy NO es válido, programar directamente para el próximo día válido a las 03:00
+    return computeNextExpiration(questHeader, now);
   }
 
   // Si hoy SÍ es válido para PATTERN, expira según el siguiente día válido del patrón
