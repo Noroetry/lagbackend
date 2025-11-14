@@ -6,11 +6,12 @@ try {
 }
 
 // Determinar qué DATABASE_URL usar según el entorno
+// En producción: usar DATABASE_URL_PRODUCTION si existe, sino DATABASE_URL
+// En desarrollo: usar DATABASE_URL
 const isProduction = process.env.NODE_ENV === 'production';
 const databaseUrl = isProduction 
   ? (process.env.DATABASE_URL_PRODUCTION || process.env.DATABASE_URL)
   : process.env.DATABASE_URL;
-
 const hasDatabaseUrl = !!databaseUrl;
 
 // Opciones de SSL según el entorno
@@ -23,9 +24,13 @@ let selectedConfig;
 
 if (hasDatabaseUrl) {
   // Si tenemos DATABASE_URL, usamos use_env_variable
+  // En producción, prioriza DATABASE_URL_PRODUCTION si existe, sino usa DATABASE_URL
+  const envVarName = isProduction && process.env.DATABASE_URL_PRODUCTION 
+    ? 'DATABASE_URL_PRODUCTION' 
+    : 'DATABASE_URL';
   selectedConfig = {
-    use_env_variable: isProduction ? 'DATABASE_URL_PRODUCTION' : 'DATABASE_URL',
-    dialect: process.env.DB_DIALECT || 'postgres',
+    use_env_variable: envVarName,
+    dialect: 'postgres',
     dialectOptions: sslOptions
   };
 } else {
