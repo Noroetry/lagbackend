@@ -6,6 +6,7 @@ const userRoutes = require('./routes/userRoutes');
 const questRoutes = require('./routes/questRoutes');
 const messageRoutes = require('./routes/messageRoutes');
 const logger = require('./utils/logger');
+const ERROR_MESSAGES = require('./utils/errorMessages');
 
 // Configure CORS to allow credentials (cookies) from frontend origin
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || null;
@@ -32,7 +33,7 @@ app.use('/api/quests', questRoutes);
 app.use('/api/messages', messageRoutes);
 
 app.use((req, res, next) => {
-  res.status(404).json({ message: 'Ruta no encontrada' });
+  res.status(404).json({ message: ERROR_MESSAGES.GENERIC.ROUTE_NOT_FOUND });
 });
 
 module.exports = app;

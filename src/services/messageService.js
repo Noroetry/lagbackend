@@ -1,5 +1,4 @@
 const db = require('../config/database');
-const Message = db.Message;
 const MessageUser = db.MessageUser;
 const logger = require('../utils/logger');
 
@@ -15,12 +14,6 @@ async function loadMessagesForUser(userId) {
         id_user: userId,
         deleted: false 
       },
-      include: [{
-        model: Message,
-        as: 'message',
-        where: { active: true },
-        required: true
-      }],
       order: [
         ['dateRead', 'ASC NULLS FIRST'],
         ['createdAt', 'DESC']
@@ -28,13 +21,22 @@ async function loadMessagesForUser(userId) {
     });
 
     const messages = messageUsers.map(mu => {
-      const msg = mu.message;
+      // Extraer questTitle de la descripción si existe
+      let questTitle = null;
+      if (mu.description) {
+        const match = mu.description.match(/La misión "([^"]+)"/);
+        if (match && match[1]) {
+          questTitle = match[1];
+        }
+      }
+
       return {
         id: mu.id,
-        messageId: msg.id,
-        title: msg.title,
-        description: msg.description,
-        type: msg.type,
+        title: mu.title,
+        description: mu.description,
+        questTitle: questTitle, // Título de la quest extraído de description
+        type: mu.type, // 'info', 'reward' o 'penalty'
+        adjunts: mu.adjunts,
         dateRead: mu.dateRead,
         isRead: !!mu.dateRead,
         createdAt: mu.createdAt

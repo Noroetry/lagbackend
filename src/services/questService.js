@@ -27,39 +27,6 @@ function delay(ms) {
 	return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-/**
- * @deprecated Use periodUtils.computeNextExpiration instead
- * Legacy function kept for backward compatibility
- */
-function computeNextExpiration(period, fromDate = null) {
-	const now = fromDate ? new Date(fromDate) : new Date();
-	// base target set to today at 03:00
-	const target = new Date(now);
-	target.setHours(3, 0, 0, 0);
-
-	if (now < target) {
-		return target;
-	}
-
-	const p = (period || 'D').toUpperCase();
-	if (p === 'D' || p === 'R') {
-		target.setDate(target.getDate() + 1);
-		return target;
-	}
-	if (p === 'W') {
-		target.setDate(target.getDate() + 7);
-		return target;
-	}
-	if (p === 'M') {
-		const month = target.getMonth();
-		target.setMonth(month + 1);
-		return target;
-	}
-
-	target.setDate(target.getDate() + 1);
-	return target;
-}
-
 function coerceBool(v) {
 	if (v === true) return true;
 	if (v === false) return false;
@@ -176,20 +143,21 @@ async function assignQuestToUser(userId) {
 }
 
 // Process completion or expiration rewards for a given QuestsUser record
-async function processQuestCompletion(userId, questUser) {
+async function processQuestCompletion(userId, questUser, transaction = null) {
 	const rewards = [];
-	const t = await db.sequelize.transaction({ isolationLevel: Sequelize.Transaction.ISOLATION_LEVELS.SERIALIZABLE });
+	const externalTx = !!transaction;
+	const t = transaction || await db.sequelize.transaction({ isolationLevel: Sequelize.Transaction.ISOLATION_LEVELS.SERIALIZABLE });
 	try {
 		const qu = await QuestsUser.findOne({ where: { id: questUser.id }, transaction: t, lock: t.LOCK.UPDATE });
 		if (!qu) throw new Error('QuestsUser record no encontrado');
 		
 		if (qu.rewardDelivered) {
-			await t.commit();
+			if (!externalTx) await t.commit();
 			return { idQuest: qu.idQuest, state: qu.state, objects: [] };
 		}
 		
 		if (qu.state === 'F' && qu.finished) {
-			await t.commit();
+			if (!externalTx) await t.commit();
 			return { idQuest: qu.idQuest, state: qu.state, objects: [] };
 		}
 
@@ -239,11 +207,13 @@ async function processQuestCompletion(userId, questUser) {
 			throw reschedErr;
 		}
 
-		await t.commit();
+		if (!externalTx) await t.commit();
 		return { idQuest: qu.idQuest, state: qu.state, objects: rewards };
 	} catch (err) {
 		logger.error('[QuestService] Error en processQuestCompletion', { error: err && err.message ? err.message : err });
-		try { await t.rollback(); } catch (e) { logger.error('[QuestService] Rollback failed', { error: e && e.message ? e.message : e }); }
+		if (!externalTx) {
+			try { await t.rollback(); } catch (e) { logger.error('[QuestService] Rollback failed', { error: e && e.message ? e.message : e }); }
+		}
 		throw err;
 	}
 }
@@ -308,7 +278,7 @@ async function updateQuestStates(userId) {
 							try {
 								await QuestsUserDetail.update({ isChecked: false, dateUpdated: new Date() }, { where: { idUser: qu.idUser, idQuest: qu.idQuest } });
 							} catch (e) {
-								// Silently fail detail reset
+								logger.debug('[QuestService] updateQuestStates - detail reset failed', { error: e && e.message ? e.message : e });
 							}
 							qu.state = 'L';
 							qu.finished = false;
@@ -353,7 +323,7 @@ async function updateQuestStates(userId) {
 							try {
 								await QuestsUserDetail.update({ isChecked: false, dateUpdated: new Date() }, { where: { idUser: qu.idUser, idQuest: qu.idQuest } });
 							} catch (e) {
-								// Silently fail detail reset
+								logger.debug('[QuestService] updateQuestStates - detail reset failed', { error: e && e.message ? e.message : e });
 							}
 							qu.state = 'L';
 							qu.finished = false;
@@ -393,7 +363,7 @@ async function updateQuestStates(userId) {
 							try {
 								await QuestsUserDetail.update({ isChecked: false, dateUpdated: new Date() }, { where: { idUser: qu.idUser, idQuest: qu.idQuest } });
 							} catch (e) {
-								// Silently fail detail reset
+								logger.debug('[QuestService] updateQuestStates - detail reset failed', { error: e && e.message ? e.message : e });
 							}
 							qu.state = 'L';
 							qu.finished = false;
@@ -831,6 +801,21 @@ async function setQuestUserDetailChecked(userId, { idQuestUserDetail = null, idQ
 				qu.state = 'C';
 				qu.dateFinished = new Date();
 				await qu.save({ transaction: t });
+
+				// Procesar recompensas INMEDIATAMENTE cuando se completa la quest
+				if (!qu.rewardDelivered) {
+					try {
+						// Pasar la transacción existente para que todo sea atómico
+						await processQuestCompletion(userId, qu, t);
+						logger.info(`[QuestService] Recompensas procesadas inmediatamente para quest ${qu.idQuest}`);
+					} catch (rewardErr) {
+						logger.error('[QuestService] Error procesando recompensas inmediatas', { 
+							error: rewardErr && rewardErr.message ? rewardErr.message : rewardErr 
+						});
+						// Re-lanzar el error para revertir toda la transacción
+						throw rewardErr;
+					}
+				}
 			}
 		}
 

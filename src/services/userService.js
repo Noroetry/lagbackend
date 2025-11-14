@@ -1,25 +1,10 @@
 const db = require('../config/database');
 const { Op } = require('sequelize');
 const User = db.User;
-const Message = db.Message;
 const UsersLevel = db.UsersLevel;
 const autoMessageService = require('./autoMessageService');
-
+const { generateAccessToken, generateRefreshToken, verifyToken } = require('../utils/tokenUtils');
 const jwt = require('jsonwebtoken');
-
-function generateAccessToken(payload) {
-    const secret = process.env.JWT_SECRET || 'development_lag_token';
-    return jwt.sign(payload, secret, { expiresIn: '1h' });
-}
-
-function generateRefreshToken(payload) {
-    // longer lived refresh token
-    // Add a random jti/nonce to ensure the token string is unique on each generation
-    const crypto = require('crypto');
-    const secret = process.env.JWT_SECRET || 'development_lag_token';
-    const payloadWithJti = Object.assign({}, payload, { jti: crypto.randomBytes(16).toString('hex') });
-    return jwt.sign(payloadWithJti, secret, { expiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN || '7d' });
-}
 
 // Rotate refresh token: verify provided refresh token, ensure it matches stored one,
 // then generate a new pair and persist the new refresh token.
@@ -39,7 +24,7 @@ async function refreshTokens(providedRefreshToken) {
         const newRefreshToken = generateRefreshToken(payload);
         await user.update({ refreshToken: newRefreshToken });
         
-        try { await user.reload(); } catch (e) { /* ignore reload failures */ }
+        try { await user.reload(); } catch (e) { logger.debug('[UserService] refreshTokens - reload failed', { error: e.message }); }
         const userObj = user.toJSON ? user.toJSON() : user;
         delete userObj.password;
         return { user: userObj, accessToken: newAccessToken, refreshToken: newRefreshToken };
@@ -77,7 +62,6 @@ async function login(usernameOrEmail, password) {
 
     userWithoutPassword.messages = [];
 
-    // generate token pair and persist refresh token on user record
     try {
         const payload = { id: user.id, username: user.username, email: user.email, admin: user.admin };
         const accessToken = generateAccessToken(payload);
@@ -86,6 +70,7 @@ async function login(usernameOrEmail, password) {
         userWithoutPassword._refreshToken = refreshToken;
         return { user: userWithoutPassword, accessToken, refreshToken };
     } catch (err) {
+        logger.debug('[UserService] login - token generation failed', { error: err.message });
         return { user: userWithoutPassword };
     }
 }
@@ -124,6 +109,7 @@ async function createUser(userData) {
             userWithoutPassword._refreshToken = refreshToken;
             return { user: userWithoutPassword, accessToken, refreshToken };
         } catch (err) {
+            logger.debug('[UserService] createUser - token generation failed', { error: err.message });
             return { user: userWithoutPassword };
         }
     } catch (error) {
@@ -162,27 +148,7 @@ async function getProfileById(userId) {
         throw new Error(`Usuario con ID ${userId} no encontrado.`);
     }
     const userObj = user.toJSON ? user.toJSON() : user;
-    // Cargar mensajes relacionados (source o destination igual al username)
-    // Cargar mensajes relacionados (source o destination igual al username)
-    try {
-        if (Message) {
-            const messages = await Message.findAll({
-                where: {
-                    [Op.or]: [
-                        { source: userObj.username },
-                        { destination: userObj.username }
-                    ]
-                },
-                order: [['dateSent', 'DESC']]
-            });
-            userObj.messages = messages.map(m => (m.toJSON ? m.toJSON() : m));
-        } else {
-            userObj.messages = [];
-        }
-    } catch (err) {
-        userObj.messages = [];
-    }
-
+    
     // Determine user's current level_number by comparing totalExp with users_levels.minExpRequired
     try {
         if (UsersLevel) {
@@ -204,17 +170,20 @@ async function getProfileById(userId) {
 
             userObj.level_number = Number(levelNumber) || 1;
             userObj.totalExp = Number(userObj.totalExp || 0);
+            userObj.coins = Number(userObj.coins || 0);
             userObj.minExpRequired = minExpRequired;
             userObj.nextRequiredLevel = nextRequired;
         } else {
             userObj.level_number = Number(userObj.level || 1);
             userObj.totalExp = Number(userObj.totalExp || 0);
+            userObj.coins = Number(userObj.coins || 0);
             userObj.minExpRequired = 0;
             userObj.nextRequiredLevel = null;
         }
     } catch (err) {
         userObj.level_number = Number(userObj.level || 1);
         userObj.totalExp = Number(userObj.totalExp || 0);
+        userObj.coins = Number(userObj.coins || 0);
         userObj.minExpRequired = 0;
         userObj.nextRequiredLevel = null;
     }

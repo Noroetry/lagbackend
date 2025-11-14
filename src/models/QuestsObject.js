@@ -24,6 +24,12 @@ module.exports = (sequelize) => {
       type: DataTypes.DOUBLE,
       allowNull: false,
       defaultValue: 0
+    },
+    id_quest_header: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: null,
+      comment: 'Para recompensas tipo quest: ID del quest_header a asignar como premio'
     }
   }, {
     tableName: 'quests_objects'

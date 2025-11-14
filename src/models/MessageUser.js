@@ -7,14 +7,6 @@ module.exports = (sequelize) => {
             primaryKey: true,
             autoIncrement: true,
         },
-        id_message: {
-            type: DataTypes.INTEGER,
-            allowNull: false,
-            references: {
-                model: 'messages',
-                key: 'id',
-            },
-        },
         id_user: {
             type: DataTypes.INTEGER,
             allowNull: false,
@@ -22,6 +14,26 @@ module.exports = (sequelize) => {
                 model: 'users',
                 key: 'id',
             },
+        },
+        type: {
+            type: DataTypes.STRING,
+            allowNull: false,
+            defaultValue: 'info',
+            comment: 'Tipo de mensaje: info, reward, penalty',
+        },
+        title: {
+            type: DataTypes.TEXT,
+            allowNull: false,
+        },
+        description: {
+            type: DataTypes.TEXT,
+            allowNull: false,
+        },
+        adjunts: {
+            type: DataTypes.JSON,
+            allowNull: true,
+            defaultValue: null,
+            comment: 'Array de objetos con las recompensas: [{id: 1, quantity: 50}, {id: 2, quantity: 100}]',
         },
         dateRead: {
             type: DataTypes.DATE,
@@ -39,11 +51,6 @@ module.exports = (sequelize) => {
     });
 
     MessageUser.associate = (models) => {
-        MessageUser.belongsTo(models.Message, {
-            foreignKey: 'id_message',
-            as: 'message'
-        });
-
         MessageUser.belongsTo(models.User, {
             foreignKey: 'id_user',
             as: 'user'

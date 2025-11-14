@@ -33,6 +33,12 @@ module.exports = (sequelize) => {
             allowNull: false,
             defaultValue: 0
         },
+        // Monedas del usuario
+        coins: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 0
+        },
         // Nivel del jugador (índice a tabla de niveles en el futuro)
         level: {
             type: DataTypes.INTEGER,

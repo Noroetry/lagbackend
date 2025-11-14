@@ -1,5 +1,6 @@
 const messageService = require('../services/messageService');
 const logger = require('../utils/logger');
+const ERROR_MESSAGES = require('../utils/errorMessages');
 
 /**
  * Load messages for a user
@@ -9,7 +10,7 @@ async function loadMessages(req, res) {
     const userId = req.body && req.body.userId ? req.body.userId : null;
     
     if (!userId) {
-      return res.status(400).json({ error: 'userId is required' });
+      return res.status(400).json({ error: ERROR_MESSAGES.MESSAGE.USER_ID_REQUIRED });
     }
 
     const messages = await messageService.loadMessagesForUser(userId);
@@ -32,7 +33,7 @@ async function markAsRead(req, res) {
     const messageUserId = req.body && req.body.messageUserId ? req.body.messageUserId : null;
 
     if (!userId || !messageUserId) {
-      return res.status(400).json({ error: 'userId and messageUserId are required' });
+      return res.status(400).json({ error: ERROR_MESSAGES.MESSAGE.MESSAGE_USER_ID_REQUIRED });
     }
 
     const result = await messageService.markMessageAsRead(messageUserId, userId);

@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
 const { User } = require('../config/database');
+const ERROR_MESSAGES = require('../utils/errorMessages');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -12,13 +13,13 @@ const protect = async (req, res, next) => {
             token = req.headers.authorization.split(' ')[1];
             const decoded = jwt.verify(token, JWT_SECRET);
             
-            logger.info(`Token de usuario ${decoded.username} accede al servidor`);
+            logger.info(`Token de usuario ${decoded.username} (ID: ${decoded.id}) accede al servidor`);
 
             // Verificar que el usuario aún existe en la base de datos
             const user = await User.findByPk(decoded.id);
             if (!user) {
                 logger.warn(`Token inválido - usuario ${decoded.username} no existe`);
-                return res.status(401).json({ message: 'No autorizado, usuario no encontrado' });
+                return res.status(401).json({ message: ERROR_MESSAGES.AUTH.USER_NOT_FOUND });
             }
 
             // Adjuntamos el usuario decodificado para que los controladores tengan acceso
@@ -32,11 +33,11 @@ const protect = async (req, res, next) => {
 
             return next();
         } catch (error) {
-            return res.status(401).json({ message: 'No autorizado, token fallido o expirado' });
+            return res.status(401).json({ message: ERROR_MESSAGES.AUTH.TOKEN_INVALID });
         }
     }
 
-    return res.status(401).json({ message: 'No autorizado, no hay token' });
+    return res.status(401).json({ message: ERROR_MESSAGES.AUTH.TOKEN_MISSING });
 };
 
 module.exports = { protect };

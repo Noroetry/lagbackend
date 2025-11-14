@@ -1,12 +1,13 @@
 const questService = require('../services/questService');
 const logger = require('../utils/logger');
 const { formatQuestsPayload } = require('../utils/responseFormatter');
+const ERROR_MESSAGES = require('../utils/errorMessages');
 
 async function loadQuests(req, res) {
   try {
     const userId = req.body && req.body.userId ? req.body.userId : null;
     if (!userId) {
-      return res.status(400).json({ error: 'userId is required' });
+      return res.status(400).json({ error: ERROR_MESSAGES.QUEST.USER_ID_REQUIRED });
     }
 
     const questsRewarded = await questService.updateQuestStates(userId);
@@ -26,12 +27,12 @@ async function activateQuest(req, res) {
     const questUserId = req.body && req.body.idQuest ? req.body.idQuest : null;
     
     if (!userId || !questUserId) {
-      return res.status(400).json({ error: 'userId and idQuest (quests_users id) are required' });
+      return res.status(400).json({ error: ERROR_MESSAGES.QUEST.QUEST_ID_REQUIRED });
     }
 
     const activated = await questService.activateQuest(userId, questUserId);
     if (!activated) {
-      return res.status(404).json({ error: 'Quest not found or could not be activated' });
+      return res.status(404).json({ error: ERROR_MESSAGES.QUEST.NOT_FOUND });
     }
 
     return res.status(200).json(formatQuestsPayload(activated));
@@ -65,7 +66,7 @@ async function submitParams(req, res) {
     }
 
     if (!userId || !idQuest || !values) {
-      return res.status(400).json({ error: 'userId (or idUser), idQuest and values (or idDetail+value) are required' });
+      return res.status(400).json({ error: ERROR_MESSAGES.QUEST.PARAMS_REQUIRED });
     }
 
     const result = await questService.saveQuestParams(userId, idQuest, values);
@@ -91,7 +92,7 @@ async function checkDetailQuest(req, res) {
     const checked = typeof req.body.checked !== 'undefined' ? req.body.checked : null;
 
     if (!userId || idQuestUserDetail === null || checked === null) {
-      return res.status(400).json({ error: 'userId, idQuestUserDetail and checked are required' });
+      return res.status(400).json({ error: ERROR_MESSAGES.QUEST.CHECK_REQUIRED });
     }
 
     const updated = await questService.setQuestUserDetailChecked(userId, { idQuestUserDetail, checked });

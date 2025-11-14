@@ -1,12 +1,4 @@
-let body;
-let validationResult;
-try {
-  ({ body, validationResult } = require('express-validator'));
-} catch (err) {
-  // If express-validator is not installed in the environment, provide no-op fallbacks
-  body = () => (req, res, next) => next();
-  validationResult = () => ({ isEmpty: () => true, array: () => [] });
-}
+const { body, validationResult } = require('express-validator');
 
 const checkValidation = (req, res, next) => {
   const errors = validationResult(req);
@@ -17,27 +9,27 @@ const checkValidation = (req, res, next) => {
 };
 
 const registerValidator = [
-  body('username')?.isLength ? body('username').isLength({ min: 3 }).withMessage('username mínimo 3 chars') : (req, res, next) => next(),
-  body('email')?.isEmail ? body('email').isEmail().withMessage('email inválido') : (req, res, next) => next(),
-  body('password')?.isLength ? body('password').isLength({ min: 6 }).withMessage('password mínimo 6 chars') : (req, res, next) => next(),
+  body('username').isLength({ min: 3 }).withMessage('username mínimo 3 chars'),
+  body('email').isEmail().withMessage('email inválido'),
+  body('password').isLength({ min: 6 }).withMessage('password mínimo 6 chars'),
   checkValidation
 ];
 
 const loginValidator = [
-  body('usernameOrEmail')?.notEmpty ? body('usernameOrEmail').notEmpty().withMessage('usernameOrEmail requerido') : (req, res, next) => next(),
-  body('password')?.notEmpty ? body('password').notEmpty().withMessage('password requerido') : (req, res, next) => next(),
+  body('usernameOrEmail').notEmpty().withMessage('usernameOrEmail requerido'),
+  body('password').notEmpty().withMessage('password requerido'),
   checkValidation
 ];
 
 const sendMessageValidator = [
-  body('title')?.notEmpty ? body('title').notEmpty().withMessage('title requerido') : (req, res, next) => next(),
-  body('description')?.notEmpty ? body('description').notEmpty().withMessage('description requerido') : (req, res, next) => next(),
-  body('destination')?.notEmpty ? body('destination').notEmpty().withMessage('destination requerido') : (req, res, next) => next(),
+  body('title').notEmpty().withMessage('title requerido'),
+  body('description').notEmpty().withMessage('description requerido'),
+  body('destination').notEmpty().withMessage('destination requerido'),
   checkValidation
 ];
 
 const changeStateValidator = [
-  body('state')?.isIn ? body('state').isIn(['A','D','R']).withMessage('state inválido') : (req, res, next) => next(),
+  body('state').isIn(['A','D','R']).withMessage('state inválido'),
   checkValidation
 ];
 

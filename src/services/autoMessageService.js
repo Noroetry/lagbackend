@@ -1,24 +1,12 @@
 const db = require('../config/database');
-const Message = db.Message;
 const MessageUser = db.MessageUser;
 const logger = require('../utils/logger');
 
-const WELCOME_TEMPLATE = {
-  code: 'system_welcome',
-  title: 'Bienvenido al Sistema',
-  description: 'Tu camino empieza ahora, no mires hacia delante, ni hacia atrás, céntrate en el ahora.',
+const WELCOME_MESSAGE = {
   type: 'info',
-  active: true
+  title: 'Bienvenido al Sistema',
+  description: 'Tu camino empieza ahora, no mires hacia delante, ni hacia atrás, céntrate en el ahora.'
 };
-
-async function ensureWelcomeTemplate(transaction) {
-  const [message] = await Message.findOrCreate({
-    where: { code: WELCOME_TEMPLATE.code },
-    defaults: WELCOME_TEMPLATE,
-    transaction
-  });
-  return message;
-}
 
 /**
  * Create and send welcome message to a new user
@@ -27,16 +15,19 @@ async function ensureWelcomeTemplate(transaction) {
 async function sendWelcomeMessage(userId) {
   const transaction = await db.sequelize.transaction();
   try {
-    const message = await ensureWelcomeTemplate(transaction);
-
     await MessageUser.findOrCreate({
-      where: { id_message: message.id, id_user: userId },
-      defaults: { id_message: message.id, id_user: userId },
+      where: { id_user: userId, type: 'info', title: WELCOME_MESSAGE.title },
+      defaults: { 
+        id_user: userId,
+        type: WELCOME_MESSAGE.type,
+        title: WELCOME_MESSAGE.title,
+        description: WELCOME_MESSAGE.description,
+        adjunts: null
+      },
       transaction
     });
 
     await transaction.commit();
-    return message;
   } catch (error) {
     try {
       await transaction.rollback();
@@ -49,58 +40,21 @@ async function sendWelcomeMessage(userId) {
 }
 
 /**
- * Create and send reward result message to user
- * @param {number} userId - The user's ID
- * @param {string} rewardDescription - Description of the reward (e.g., "+100 EXP", "-50 EXP")
- */
-async function sendRewardResultMessage(userId, rewardDescription) {
-  try {
-    // Create reward result message
-    const message = await Message.create({
-      title: 'Resultado de misión',
-      description: rewardDescription,
-      type: 'reward',
-      active: true
-    });
-
-    // Send to user
-    await MessageUser.create({
-      id_message: message.id,
-      id_user: userId
-    });
-
-    return message;
-  } catch (error) {
-    logger.error('[AutoMessageService] sendRewardResultMessage - error', { 
-      userId, 
-      error: error.message 
-    });
-    throw error;
-  }
-}
-
-/**
  * Create and send level up message to user
  * @param {number} userId - The user's ID
  * @param {number} newLevel - The new level achieved
  */
 async function sendLevelUpMessage(userId, newLevel) {
   try {
-    // Create level up message
-    const message = await Message.create({
+    // Crear message_user directamente con type info
+    await MessageUser.create({
+      id_user: userId,
+      type: 'info',
       title: `¡Nivel ${newLevel} alcanzado!`,
       description: `Enhorabuena, has subido al nivel ${newLevel}. Sigue completando misiones para seguir progresando.`,
-      type: 'info',
-      active: true
+      adjunts: null
     });
 
-    // Send to user
-    await MessageUser.create({
-      id_message: message.id,
-      id_user: userId
-    });
-
-    return message;
   } catch (error) {
     logger.error('[AutoMessageService] sendLevelUpMessage - error', { 
       userId, 
@@ -113,6 +67,5 @@ async function sendLevelUpMessage(userId, newLevel) {
 
 module.exports = {
   sendWelcomeMessage,
-  sendRewardResultMessage,
   sendLevelUpMessage
 };
