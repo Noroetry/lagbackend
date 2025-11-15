@@ -581,6 +581,31 @@ async function getUserQuests(userId) {
 	}
 
 	const result = Array.from(map.values());
+	
+	// Add havePenalty flag to each quest
+	const questIds = result.map(q => q.header.idQuestHeader).filter(id => id);
+	if (questIds.length > 0) {
+		const penaltyRecords = await QuestsObject.findAll({
+			where: {
+				idQuest: { [Op.in]: questIds },
+				type: 'P'
+			},
+			attributes: ['idQuest'],
+			group: ['idQuest']
+		});
+		
+		const questsWithPenalty = new Set(penaltyRecords.map(r => Number(r.idQuest)));
+		
+		for (const quest of result) {
+			quest.havePenalty = questsWithPenalty.has(Number(quest.header.idQuestHeader));
+		}
+	} else {
+		// If no quest IDs, set havePenalty to false for all
+		for (const quest of result) {
+			quest.havePenalty = false;
+		}
+	}
+	
 	return result;
 }
 
