@@ -274,7 +274,7 @@ async function updateQuestStates(userId) {
 								continue;
 							}
 							
-							const nextExp = periodUtils.computeNextExpiration(header, now);
+							const nextExp = periodUtils.computeFirstActivationExpiration(header, now);
 							try {
 								await QuestsUserDetail.update({ isChecked: false, dateUpdated: new Date() }, { where: { idUser: qu.idUser, idQuest: qu.idQuest } });
 							} catch (e) {
@@ -319,7 +319,7 @@ async function updateQuestStates(userId) {
 								continue;
 							}
 							
-							const nextExp = periodUtils.computeNextExpiration(header, now);
+							const nextExp = periodUtils.computeFirstActivationExpiration(header, now);
 							try {
 								await QuestsUserDetail.update({ isChecked: false, dateUpdated: new Date() }, { where: { idUser: qu.idUser, idQuest: qu.idQuest } });
 							} catch (e) {
@@ -359,7 +359,7 @@ async function updateQuestStates(userId) {
 								continue;
 							}
 							
-							const nextExp = periodUtils.computeNextExpiration(header, now);
+							const nextExp = periodUtils.computeFirstActivationExpiration(header, now);
 							try {
 								await QuestsUserDetail.update({ isChecked: false, dateUpdated: new Date() }, { where: { idUser: qu.idUser, idQuest: qu.idQuest } });
 							} catch (e) {
