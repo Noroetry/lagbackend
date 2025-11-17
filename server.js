@@ -2,8 +2,8 @@
 const app = require('./src/app'); 
 const db = require('./src/config/database');
 const logger = require('./src/utils/logger');
-const ensureSystemObjects = require('./scripts/seed-objects');
-const ensureRewardObjects = require('./scripts/seed-reward-objects-startup');
+
+const { seedAll } = require('./scripts/seed-from-json');
 
 const PORT = process.env.PORT || 3000; 
 
@@ -23,20 +23,13 @@ const startServer = async () => {
       process.exit(1);
     }
 
-    // Ensure system objects exist after migrations
-    try {
-      await ensureSystemObjects();
-    } catch (seedErr) {
-      logger.error('Error al crear objetos del sistema:', seedErr && seedErr.message ? seedErr.message : seedErr);
-      // This is not critical, so we can continue
-    }
 
-    // Ensure reward objects exist (experience, coin, quest)
+    // Seed automático desde JSON: asegura que todos los objetos y quests de los JSON existan
     try {
-      await ensureRewardObjects();
-    } catch (rewardErr) {
-      logger.error('Error al verificar objetos de recompensa:', rewardErr && rewardErr.message ? rewardErr.message : rewardErr);
-      // This is not critical, so we can continue
+      logger.info('[server] Revisando y asegurando seeds de objetos y quests desde /seeds');
+      await seedAll();
+    } catch (seedErr) {
+      logger.error('Error en seed inicial:', seedErr && seedErr.message ? seedErr.message : seedErr);
     }
 
     app.listen(PORT, () => {

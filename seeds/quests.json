@@ -1,0 +1,122 @@
+[
+  {
+    "header": {
+      "title": "La disciplina del débil",
+      "description": "Puedes descansar lo que necesites, pero cuanto menos, mejor será para ti. Lo importante es cumplir.",
+      "period": "D",
+      "duration": 1440,
+      "active": true,
+      "levelRequired": 1,
+      "baseRewardXP": 1.0,
+      "basePenaltyXP": 1.0,
+      "nextQuest": null,
+      "welcomeMessage": "El cuerpo es nuestro templo; mantenerlo limpio, cuidarlo y dedicarle el tiempo que se merece no es algo que se elija, se hace, sin importar frío, dolor o emociones que nos aplaquen.",
+      "periodType": "WEEKDAYS",
+      "activeDays": "1,3,5"
+    },
+    "details": [
+      { "description": "Haz {value} sentadillas", "needParam": true, "labelParam": "Sentadillas", "descriptionParam": "Introduce máximo de sentadillas en un intento", "isEditable": true, "paramType": "number" },
+      { "description": "Haz {value} flexiones", "needParam": true, "labelParam": "Flexiones", "descriptionParam": "Introduce máximo de flexiones en un intento", "isEditable": true, "paramType": "number" },
+      { "description": "Haz {value} dominadas", "needParam": true, "labelParam": "Dominadas", "descriptionParam": "Introduce máximo de dominadas en un intento", "isEditable": true, "paramType": "number" },
+      { "description": "Corre {value} km", "needParam": true, "labelParam": "Correr", "descriptionParam": "Introduce máximo de km durante media hora", "isEditable": true, "paramType": "number" }
+    ],
+    "objects": [
+      { "objectName": "Experiencia", "type": "R", "quantity": 50 },
+      { "objectName": "Experiencia", "type": "P", "quantity": 30 }
+    ]
+  },
+  {
+    "header": {
+      "title": "El ritual de la salud",
+      "description": "Bebe cada taza de té siendo consciente de su sabor, sintiendo cómo se mueve por tu cuerpo, con tus manos abrazando la taza y notando su calidez.",
+      "period": "D",
+      "duration": 1440,
+      "active": true,
+      "levelRequired": 1,
+      "baseRewardXP": 1.0,
+      "basePenaltyXP": 1.0,
+      "nextQuest": null,
+      "welcomeMessage": "Escapar del ruido para centrarnos en nuestra taza de té es el mayor ejercicio de introspección que existe. Por eso dicen que 'más vale tres días sin alimento que un día sin té.",
+      "periodType": "FIXED"
+    },
+    "details": [
+      { "description": "Toma un té negro al despertar", "needParam": false, "labelParam": "Té Matutino", "isEditable": false, "paramType": "text" },
+      { "description": "Toma un té verde a media mañana", "needParam": false, "labelParam": "Té Matutino", "isEditable": false, "paramType": "text" },
+      { "description": "Toma un té rojo después de comer", "needParam": false, "labelParam": "Té Matutino", "isEditable": false, "paramType": "text" },
+      { "description": "Toma una infusión de gengibre y limón por la tarde", "needParam": false, "labelParam": "Té Matutino", "isEditable": false, "paramType": "text" },
+      { "description": "Toma una tila antes de dormir", "needParam": false, "labelParam": "Té Matutino", "isEditable": false, "paramType": "text" }
+    ],
+    "objects": [
+      { "objectName": "Experiencia", "type": "R", "quantity": 60 },
+      { "objectName": "Experiencia", "type": "P", "quantity": 30 }
+    ]
+  },
+  {
+    "header": {
+      "title": "Pacto natural",
+      "description": "No importa el destino, playa, montaña, caminos. Ponte cómodo, deja el teléfono en casa y desconecta por unas horas de todo.",
+      "period": "W",
+      "duration": 10080,
+      "active": true,
+      "levelRequired": 1,
+      "baseRewardXP": 1.0,
+      "basePenaltyXP": 1.0,
+      "nextQuest": null,
+      "welcomeMessage": "Hasta que no estamos perdidos no comenzamos a entendernos a nosotros mismos.",
+      "periodType": "FIXED"
+    },
+    "details": [
+      { "description": "Da un paseo de mínimo una hora sin ninguna tecnología.", "needParam": false, "labelParam": "Pasear", "isEditable": false, "paramType": "number" }
+    ],
+    "objects": [
+      { "objectName": "Experiencia", "type": "R", "quantity": 55 },
+      { "objectName": "Experiencia", "type": "P", "quantity": 20 },
+      { "objectName": "Moneda", "type": "R", "quantity": 100 }
+    ]
+  },
+  {
+    "header": {
+      "title": "La paz viene de dentro",
+      "description": "Ponte en una postura cómoda, en un lugar relajado, sigue tu respiración y siente cada parte de tu cuerpo.",
+      "period": "D",
+      "duration": 1440,
+      "active": true,
+      "levelRequired": 1,
+      "baseRewardXP": 1.0,
+      "basePenaltyXP": 1.0,
+      "nextQuest": null,
+      "welcomeMessage": "En la mente del principiante hay muchas posibilidades, pero en la del experto hay pocas.",
+      "periodType": "FIXED"
+    },
+    "details": [
+      { "description": "Realiza diez minutos de meditación", "needParam": false, "isEditable": false, "paramType": "text" }
+    ],
+    "objects": [
+      { "objectName": "Misión", "type": "R", "quantity": 50 },
+      { "objectName": "Experiencia", "type": "R", "quantity": 20 }
+    ]
+  },
+  {
+    "header": {
+      "title": "La llama del intelecto",
+      "description": "Acomódate en tu rincón favorito, con la ropa más cálida y cómoda que tengas, olvídate de lo que te rodea y sumérgete en el interior de un libro.",
+      "period": "D",
+      "duration": 1440,
+      "active": true,
+      "levelRequired": 1,
+      "baseRewardXP": 1.0,
+      "basePenaltyXP": 1.0,
+      "nextQuest": null,
+      "welcomeMessage": "Un libro es una nave que nos permite viajar lejos, un jardín de bolsillo, una conversación con nuestra alma.",
+      "periodType": "FIXED"
+    },
+    "details": [
+      { "description": "Lee un mínimo de diez páginas de un libro", "needParam": false, "isEditable": false, "paramType": "text" },
+      { "description": "Dedica diez minutos a reflexionar sobre lo leído", "needParam": false, "isEditable": false, "paramType": "text" }
+    ],
+    "objects": [
+      { "objectName": "Misión", "type": "R", "quantity": 50 },
+      { "objectName": "Experiencia", "type": "R", "quantity": 20 }
+    ]
+  }
+]

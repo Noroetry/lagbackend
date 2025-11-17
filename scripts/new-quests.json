@@ -1,0 +1,60 @@
+[
+  {
+    "header": {
+      "title": "La paz viene de dentro",
+      "description": "Ponte en una postura cómoda, en un lugar relajado, sigue tu respiración y siente cada parte de tu cuerpo.",
+      "welcomeMessage": "En la mente del principiante hay muchas posibilidades, pero en la del experto hay pocas.",
+      "period": "D",
+      "periodType": "FIXED",
+      "duration": 1440,
+      "active": true,
+      "levelRequired": 1,
+      "baseRewardXP": 1,
+      "basePenaltyXP": 1
+    },
+    "details": [
+      {
+        "description": "Realiza diez minutos de meditación",
+        "needParam": false,
+        "isEditable": false,
+        "paramType": "text"
+      }
+    ],
+    "objects": [
+      { "idObject": 1, "type": "R", "quantity": 50 },
+      { "idObject": 2, "type": "R", "quantity": 20 }
+    ]
+  },
+  {
+    "header": {
+      "title": "La llama del intelecto",
+      "description": "Acomódate en tu rincón favorito, con la ropa más cálida y cómoda que tengas, olvídate de lo que te rodea y sumérgete en el interior de un libro.",
+      "welcomeMessage": "Un libro es una nave que nos permite viajar lejos, un jardín de bolsillo, una conversación con nuestra alma.",
+      "period": "D",
+      "periodType": "FIXED",
+      "duration": 1440,
+      "active": true,
+      "levelRequired": 1,
+      "baseRewardXP": 1,
+      "basePenaltyXP": 1
+    },
+    "details": [
+      {
+        "description": "Lee un mínimo de diez páginas de un libro",
+        "needParam": false,
+        "isEditable": false,
+        "paramType": "text"
+      },
+      {
+        "description": "Dedica diez minutos a reflexionar sobre lo leído",
+        "needParam": false,
+        "isEditable": false,
+        "paramType": "text"
+      }
+    ],
+    "objects": [
+      { "idObject": 1, "type": "R", "quantity": 50 },
+      { "idObject": 2, "type": "R", "quantity": 20 }
+    ]
+  }
+]
